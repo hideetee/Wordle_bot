@@ -3,14 +3,17 @@
 # SCORING
 # ==============================
 
-class Score:
+class ScoreCalculator:
     
-    def __init__(self, player, wordle, score):
+    def __init__(self, player, wordle_num, score):
 
         # self.date = date
-        self.player = player
-        self.wordle = wordle
-        self.score = score
+        self.player = str(player)
+        self.wordle_num = int(wordle_num)
+        self.score = score # contains 'X' for fail, or '1/6', '2/6', etc. for success
+
+    def __repr__(self):
+        return f"(player={self.player}, wordle={self.wordle_num}, score={self.score})\n"
         
 
     def numeric_score(self):
@@ -27,21 +30,9 @@ class Score:
         else:
             return int(self.score)
         
-    # def wordle_week(self, wordle_number, date):
-    #     """
-    #     Given a Wordle number and its actual date,
-    #     return the Sunday–Saturday Wordle range.
-    #     """
-    #     weekday_index = datetime.strptime(date, "%m/%d/%y").weekday() # Monday=0, Sunday=6
-        
-    #     sunday_index = (weekday_index + 1) % 7  # Sunday=0, Saturday=6
-
-    #     week_start = wordle_number - sunday_index
-    #     week_end = week_start + 6
-    #     return week_start, week_end
 
     @staticmethod
-    def wordle_week(wordle_number):
+    def wordle_week(wordle_num):
         """
         Computer weekday for a Wordle, given a known Wordle anchor.
         Sunday = 0, Saturday = 6
@@ -49,24 +40,38 @@ class Score:
         wordle_anchor = 1860
         anchor_weekday = 4 # Thursday
 
-        weekday = (anchor_weekday + (wordle_number - wordle_anchor)) % 7
+        weekday = (anchor_weekday + (wordle_num - wordle_anchor)) % 7
 
-        week_start = wordle_number - weekday
-        week_end = week_start + 6
+        week_start = int(wordle_num - weekday)
+        week_end = int(week_start + 6)
 
         return week_start, week_end
 
 
+    @staticmethod
+    def store_week_scores(scores, wordle_num):
+        """
+        Store the scores for a specific Wordle week.
+        """
+
+        scores = ScoreCalculator.numeric_score(scores)  
+        week_start, week_end = ScoreCalculator.wordle_week(wordle_num)
+        
+        return [s for s in scores if week_start <= s.wordle_num <= week_end]
+        
 
     @staticmethod
-    def weekly_score(scores, week_start, week_end):
+    def weekly_score(scores, wordle_num):
         """
         Calculate the total score for a player within a specific Wordle week.
         """
         week_total_score = 0
+
+        week_start, week_end = ScoreCalculator.wordle_week(wordle_num)
+
         for score in scores:
-            if week_start <= score.wordle <= week_end:
-                week_total_score += score.numeric_score()
+            if week_start <= score.wordle_num <= week_end:
+                week_total_score += score
         return week_total_score
 
 
