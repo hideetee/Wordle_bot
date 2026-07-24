@@ -1,6 +1,7 @@
 import pytest
+import polars as pl
 
-from wordle_bot.scorer import ScoreCalculator
+from wordle_bot.scorer import ScoreCalculator as SC
 
 def test_wordle_week_random_wordle_num():
     # Arrange
@@ -13,7 +14,7 @@ def test_wordle_week_random_wordle_num():
     expected_end = 1869
 
     # Act
-    week_start, week_end = ScoreCalculator.wordle_week(1865)
+    week_start, week_end = SC.wordle_week(1865)
 
     # Assert
     assert week_start == expected_start
@@ -26,4 +27,5 @@ def test_wordle_week_non_int_input():
 
     # Act & Assert
     with pytest.raises(TypeError):
-        ScoreCalculator.wordle_week(wordle_number)
+        SC.wordle_week(wordle_number)
+

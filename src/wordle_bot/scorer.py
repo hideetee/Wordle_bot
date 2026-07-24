@@ -2,7 +2,11 @@
 # SCORING
 # ==============================
 
+import re
+from turtle import save
+
 import polars as pl
+from wordle_bot.parser import parser_wordle_score
 
 class ScoreCalculator:
     
@@ -65,7 +69,51 @@ class ScoreCalculator:
 
         else:
             return int(self.score)
+
+
+
+    def parser_wordle_score(msg):
+
+        HEADER = re.compile(r"^\d{1,2}/\d{1,2}/\d{2},")
+        WORDLE = re.compile(
+            r"Wordle\s+([\d,\s]+)\s+([1-6X])/6",
+            re.I
+        )
+
+        res = WORDLE.search(msg)
+
+        if res is None:
+            return None
+
+        result = res.string.strip() 
+
         
+        txt = result.split(':')
+
+        txt1 = txt[1].split('-')
+
+        txt2 = txt[2].split(' ')
+
+        txt3 = txt2[3].split('/')
+
+        player = txt1[1].strip()
+        wordle = int(txt2[2].replace(",", ""))
+        score = txt3[0]
+
+
+        return player, wordle, score
+
+    def sender_tracker(msg):
+
+        """
+        Extract the sender's name from a WhatsApp message.
+        """
+
+        header_pattern = re.compile(
+            f"^\d+/\d+/\d+,\s+\d+:\d+"
+        )
+
+
 
     @staticmethod
     def wordle_week(wordle_num):
@@ -114,6 +162,7 @@ class ScoreCalculator:
 
         weekly_dfs = []
         for week_start, week_end in ScoreCalculator.store_week_ranges(df):
+           wordle_week = str(week_start) + '-' + str(week_end)
            df_week = df.filter(
                (pl.col("wordle_num") >= week_start) 
                & (pl.col("wordle_num") <= week_end)
@@ -125,7 +174,11 @@ class ScoreCalculator:
 
         for df_week in weekly_dfs:
             weekly_score = df_week.group_by('player').agg(pl.sum('score')).sort('score')
+            weekly_score = weekly_score.with_columns(
+                            pl.lit(wordle_week).alias("wordle_week")
+                        )
             weekly_scores.append(weekly_score)
+            
 
         return weekly_scores
 
