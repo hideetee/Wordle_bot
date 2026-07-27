@@ -156,7 +156,7 @@ class ScoreCalculator:
     @staticmethod
     def compute_weekly_score(df):
         """
-        Calculate the total score for a player within a specific Wordle week.
+        Calculate the total score for a player within all Wordle weeks.
         """
 
         weekly_dfs = []
@@ -166,12 +166,13 @@ class ScoreCalculator:
                (pl.col("wordle_num") >= week_start) 
                & (pl.col("wordle_num") <= week_end)
            )
-           weekly_dfs.append(df_week)
+           weekly_dfs.append((df_week, week_start, week_end))
 
 
         weekly_scores = []
 
-        for df_week in weekly_dfs:
+        for df_week, week_start, week_end in weekly_dfs:
+            wordle_week = f"{week_start}-{week_end}"
             weekly_score = df_week.group_by('player').agg(pl.sum('score')).sort('score')
             weekly_score = weekly_score.with_columns(
                             pl.lit(wordle_week).alias("wordle_week")
@@ -184,13 +185,12 @@ class ScoreCalculator:
 
 
 
-    def ranking(df):
+    def week_ranking(df):
 
-        '''
-        Rank players based on 'wordle' and 'score'
-        '''
-
+  
         weekly_scores = ScoreCalculator.compute_weekly_score(df)
+
+        ranked_weeks = []
 
         for weekly_score in weekly_scores:
 
@@ -206,17 +206,37 @@ class ScoreCalculator:
 
             df_final = df_ranked.join(df_ranked_grouped, on="score", how="left").sort("rank")
             df_final = df_final.drop("raw_rank")
+            ranked_weeks.append(df_final)
 
-            return df_final
+            
+        return ranked_weeks
+
+    def running_ranking(df):
+        """
+        Rank players based on overall 'score'
+        """
+
+        running_rank_score = df.group_by("player").agg(
+            pl.sum("rank").alias("running rank")
+            ).sort("running rank")
+
+        df.join(running_rank_score, on="player", how="left")
+
+        return df
+    
+
+
 
         
         
+    def ranking(df):
+      
+        '''
+        Rank players based on overall 'score'
+        '''
+        return df.group_by("player").agg(
+            pl.sum("score").alias("total_score")
+        ).sort("total_score")
 
 
-
-    #, with 'X' treated as 7 for ranking purposes
-    #    Print raw weekly score, rank, and add raw score to overall score for each player
-        
-
-
-
+    
