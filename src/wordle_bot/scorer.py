@@ -39,8 +39,13 @@ class ScoreCalculator:
 
         players = df.select(pl.col("player")).unique()
         wordles = df.select(pl.col("wordle_num")).unique()
+        wordles_min = df.select(pl.col("wordle_num")).min().item()
+        wordles_max = df.select(pl.col("wordle_num")).max().item()
 
-        full_grid = players.join(wordles, how="cross")
+        # fill all values between min and max wordle_num 
+        wordles_fill = pl.DataFrame({"wordle_num": list(range(wordles_min, wordles_max + 1))})
+
+        full_grid = players.join(wordles_fill, how="cross")
 
         df_fill_incompletes = full_grid.join(
             df, on=["player", "wordle_num"], how="left"
@@ -71,37 +76,31 @@ class ScoreCalculator:
             return int(self.score)
 
 
+        
+        
 
-    def parser_wordle_score(msg):
+        # res = WORDLE.search(msg)
 
-        HEADER = re.compile(r"^\d{1,2}/\d{1,2}/\d{2},")
-        WORDLE = re.compile(
-            r"Wordle\s+([\d,\s]+)\s+([1-6X])/6",
-            re.I
-        )
+        # if res is None:
+        #     return None
 
-        res = WORDLE.search(msg)
-
-        if res is None:
-            return None
-
-        result = res.string.strip() 
+        # result = res.string.strip() 
 
         
-        txt = result.split(':')
+        # txt = result.split(':')
 
-        txt1 = txt[1].split('-')
+        # txt1 = txt[1].split('-')
 
-        txt2 = txt[2].split(' ')
+        # txt2 = txt[2].split(' ')
 
-        txt3 = txt2[3].split('/')
+        # txt3 = txt2[3].split('/')
 
-        player = txt1[1].strip()
-        wordle = int(txt2[2].replace(",", ""))
-        score = txt3[0]
+        # player = txt1[1].strip()
+        # wordle = int(txt2[2].replace(",", ""))
+        # score = txt3[0]
 
 
-        return player, wordle, score
+        # return player, wordle, score
 
     def sender_tracker(msg):
 
