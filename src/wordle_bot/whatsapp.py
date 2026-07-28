@@ -253,98 +253,6 @@ class WhatsApp:
 
 
 
-class Database:
-
-    def __init__(self):
-
-        self.conn = sqlite3.connect(
-            DATABASE,
-            check_same_thread=False
-        )
-
-        self.create_tables()
-
-
-    def create_tables(self):
-
-        cursor = self.conn.cursor()
-
-        cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS scores (
-
-            player TEXT,
-            wordle INTEGER,
-            score TEXT,
-
-            PRIMARY KEY(player, wordle)
-
-        )
-        """
-        )
-
-        self.conn.commit()
-
-
-    def save_score(
-            self,
-            player,
-            wordle,
-            score):
-
-        cursor = self.conn.cursor()
-
-        cursor.execute(
-        """
-        INSERT OR REPLACE INTO scores
-
-        VALUES (?,?,?)
-
-        """,
-        (   
-            player,
-            wordle,
-            score,
-        ))
-
-        self.conn.commit()
-
-
-
-    def leaderboard(self):
-
-        cursor = self.conn.cursor()
-
-
-        cursor.execute(
-        """
-        SELECT
-
-        player,
-
-        AVG(
-            CASE
-            WHEN score='X'
-            THEN 7
-
-            ELSE CAST(score AS INTEGER)
-
-            END
-        )
-
-        FROM scores
-
-        GROUP BY player
-
-        ORDER BY 2 ASC
-
-        """
-        )
-
-
-        return cursor.fetchall()
-    
-
 # ==============================
 # WORDLE PARSER
 # ==============================
@@ -455,6 +363,29 @@ def create_leaderboard(rows):
 
 
     return text
+
+
+# ==============================
+# CONVERT TO WHATSAPP-FRIENDLY FORMAT
+# ==============================
+
+def df_to_whatsapp_score_rank(df):
+    rows = df.to_dicts()
+    lines = ["Player     Week     Score   Rank"]
+    for r in rows:
+        lines.append(
+            f"{r['player']:6} {r['week_start']:4} - {r['week_end']:4} {r['score']:5}  {r['rank']:4}"
+        )
+    return "\n".join(lines)
+
+def df_to_whatsapp_overall_score_rank(df):
+    rows = df.to_dicts()
+    lines = ["Player  AT Score  AT Rank"]
+    for r in rows:
+        lines.append(
+            f"{r['player']:6} {r['overall_score']:10} {r['overall_rank']:8}"
+        )
+    return "\n".join(lines)
 
 
 
@@ -570,7 +501,6 @@ def main():
         time.sleep(
             CHECK_INTERVAL
         )
-
 
 
 if __name__ == "__main__":
