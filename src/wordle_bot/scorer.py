@@ -22,11 +22,18 @@ class ScoreCalculator:
 
     def score_cleaner(self):
         """
+        Accepts either a list of ScoreCalculator objects or a polars DataFrame and returns a cleaned polars DataFrame.
+        The DataFrame will have columns: player, wordle_num, score.
         Create a polars DataFrame from a list of ScoreCalculator objects
         Convert 'X' to 7 and cast score to Int64 for ranking purposes
         If wordle_num is not complete for a player, populate score with 7
         """
 
+        if isinstance(self, pl.DataFrame):
+            return self
+
+        if not self:
+            return []  
         
         data = [(score.player, score.wordle_num, score.score) for score in self]
         df = pl.DataFrame(data, schema=["player", "wordle_num", "score"], orient = "row")
@@ -51,9 +58,12 @@ class ScoreCalculator:
             df, on=["player", "wordle_num"], how="left"
             )
 
-
+        # Conditional fill with 6 only for wordle_num < max        
         df_fill_incompletes = df_fill_incompletes.with_columns(
-            pl.col("score").fill_null(7)
+            pl.when(pl.col("wordle_num") < wordles_max)
+            .then(pl.col("score").fill_null(7))
+            .otherwise(pl.col("score"))
+            .alias("score")
         )
 
         df_fill_incompletes = df_fill_incompletes.sort(["wordle_num", "player"])
@@ -79,28 +89,6 @@ class ScoreCalculator:
         
         
 
-        # res = WORDLE.search(msg)
-
-        # if res is None:
-        #     return None
-
-        # result = res.string.strip() 
-
-        
-        # txt = result.split(':')
-
-        # txt1 = txt[1].split('-')
-
-        # txt2 = txt[2].split(' ')
-
-        # txt3 = txt2[3].split('/')
-
-        # player = txt1[1].strip()
-        # wordle = int(txt2[2].replace(",", ""))
-        # score = txt3[0]
-
-
-        # return player, wordle, score
 
     def sender_tracker(msg):
 
@@ -211,24 +199,69 @@ class ScoreCalculator:
             
         return ranked_weeks
 
-    def running_ranking(df):
+    def running_ranking(weekly_scores, interest="overall_rank"):
         """
-        Rank players based on overall 'score'
+        
+        weekly_scores: list of polars DataFrames, each representing a week's scores
+        returns list of polars DataFrames with an additional column 'overall_rank' and 'overall_score' representing the cumulative rank and score across all weeks
         """
 
-        running_rank_score = df.group_by("player").agg(
-            pl.sum("rank").alias("running rank")
-            ).sort("running rank")
+        cumulative_rank = {}
+        cumulative_score = {}
+        
+        ranked_weeks = []
 
-        df.join(running_rank_score, on="player", how="left")
+        for week in weekly_scores:
+                # Compute this week's rank contribution
+                week_rank = (
+                    week.group_by("player")
+                        .agg(pl.sum("rank").alias("week_rank"))
+                )
 
-        return df
+                # Update cumulative totals
+                for row in week_rank.iter_rows(named=True):
+                    player = row["player"]
+                    cumulative_rank[player] = cumulative_rank.get(player, 0) + row["week_rank"]
+
+                # Compute this week's score contribution
+                week_score = (
+                    week.group_by("player")
+                        .agg(pl.sum("score").alias("week_score"))
+                )
+
+                # Update cumulative totals
+                for row in week_score.iter_rows(named=True):
+                    player = row["player"]
+                    cumulative_score[player] = cumulative_score.get(player, 0) + row["week_score"]
+
+                # Convert cumulative dict → Polars DF
+                cumulative_df = pl.DataFrame(
+                    {"player": list(cumulative_rank.keys()),
+                     "overall_rank": list(cumulative_rank.values())}
+                )
+
+                cumulative_score_df = pl.DataFrame(
+                    {"player": list(cumulative_score.keys()),
+                     "overall_score": list(cumulative_score.values())}
+                )
+
+                # Join cumulative rank into this week's DF
+                week_with_running = (
+                    week.join(cumulative_df, on="player", how="left")
+                    .join(cumulative_score_df, on="player", how="left")
+                    .with_columns([
+                          pl.col("overall_rank").cast(pl.Float64), 
+                          pl.col("overall_score").cast(pl.Float64)])
+                        .sort(interest)
+                )
+
+                ranked_weeks.append(week_with_running)
+                
+        # ranked_weeks[-1] = ranked_weeks[-1].sort(interest)
+
+        return ranked_weeks
     
 
-
-
-        
-        
     def ranking(df):
       
         '''
@@ -239,4 +272,3 @@ class ScoreCalculator:
         ).sort("total_score")
 
 
-    

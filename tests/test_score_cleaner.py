@@ -49,3 +49,31 @@ def test_score_cleaner_fills_incompletes():
     print(expected_df)
 
     assert df.equals(expected_df)
+
+def test_score_cleaner_fills_incompletes_recents_unfilled():
+    # Arrange
+    scores = [
+        ["Alice", 1, "2"],
+        ['Bob', 1, "3"],
+        ["Bob", 2, "X"], # converted to 7
+        ["Bob", 3, None], # remains NULL
+        ["Alice", 3, "2"]]
+
+
+    sc_list = [SC(player, wordle, score) for player, wordle, score in scores]
+
+    # Act 
+    df = SC.score_cleaner(sc_list)
+
+    # Assert
+    expected_df = pl.DataFrame({
+        "player": ["Alice", "Bob", "Alice", "Bob", "Alice", "Bob"],
+        "wordle_num": [1, 1, 2, 2, 3, 3],
+        "score": [2, 3, 7, 7, 2, None]
+    }).sort(["wordle_num", "player"])
+
+    assert df.equals(expected_df)
+
+
+
+    
