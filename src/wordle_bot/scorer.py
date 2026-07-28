@@ -149,7 +149,7 @@ class ScoreCalculator:
 
         weekly_dfs = []
         for week_start, week_end in ScoreCalculator.store_week_ranges(df):
-           wordle_week = str(week_start) + '-' + str(week_end)
+        #    wordle_week = str(week_start) + '-' + str(week_end)
            df_week = df.filter(
                (pl.col("wordle_num") >= week_start) 
                & (pl.col("wordle_num") <= week_end)
@@ -160,10 +160,12 @@ class ScoreCalculator:
         weekly_scores = []
 
         for df_week, week_start, week_end in weekly_dfs:
-            wordle_week = f"{week_start}-{week_end}"
+            # wordle_week = f"{week_start}-{week_end}"
             weekly_score = df_week.group_by('player').agg(pl.sum('score')).sort('score')
             weekly_score = weekly_score.with_columns(
-                            pl.lit(wordle_week).alias("wordle_week")
+                            # pl.lit(wordle_week).alias("wordle_week"),
+                            pl.lit(week_start).alias("week_start"),
+                            pl.lit(week_end).alias("week_end")
                         )
             weekly_scores.append(weekly_score)
             
