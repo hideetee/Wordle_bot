@@ -16,9 +16,13 @@ from wordle_bot.database import Database_wordle
 from wordle_bot.parser import WordleParser
 from wordle_bot.scorer import ScoreCalculator
 from wordle_bot.whatsapp import WhatsAppClient
-from wordle_bot.utils import GROUP_NAME, DATABASE, GROUP_NAME_SEND
+from wordle_bot.utils import DATABASE, load_config
 
 def main():
+
+    config = load_config()
+    GROUP_NAME = config["GROUP_NAME"]
+    GROUP_NAME_SEND = config["GROUP_NAME_SEND"]
 
     database = Database_wordle(DATABASE)
     whatsapp = WhatsAppClient(GROUP_NAME)
