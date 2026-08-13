@@ -1,28 +1,32 @@
 # Use env scoring_bot to run this script
 
 
-# from wordle_bot.whatsapp import WhatsApp
-
-
-# bot = WhatsApp()
-
-# input("Press Enter...")
-
-
-# main.py
-
 import polars as pl
 from wordle_bot.database import Database_wordle
 from wordle_bot.parser import WordleParser
 from wordle_bot.scorer import ScoreCalculator
 from wordle_bot.whatsapp import WhatsAppClient
 from wordle_bot.utils import DATABASE, load_config
+import streamlit as st
+
+def get_current_leaderboard(last_leaderboard=False):
+ 
+    database = Database_wordle(DATABASE)
+
+    current_leaderboard = database.load_leaderboard(last_leaderboard=last_leaderboard)
+
+    return current_leaderboard
+
+
 
 def main():
 
-    config = load_config()
-    GROUP_NAME = config["GROUP_NAME"]
-    GROUP_NAME_SEND = config["GROUP_NAME_SEND"]
+    # config = load_config()
+    # GROUP_NAME = config["GROUP_NAME"]
+    # GROUP_NAME_SEND = config["GROUP_NAME_SEND"]
+
+    GROUP_NAME = st.session_state.config["GROUP_NAME"]
+    GROUP_NAME_SEND = st.session_state.config["GROUP_NAME_SEND"]
 
     database = Database_wordle(DATABASE)
     whatsapp = WhatsAppClient(GROUP_NAME)
@@ -89,41 +93,6 @@ def main():
             database=database
         )
 
-    # # 7. COMPLETENESS CHECK
-    # most_recent_wordle_num = scores_recent.select(pl.col("wordle_num")).max().item()
-    # print(f"Most recent wordle_num in week: {most_recent_wordle_num}")
-
-    # complete_leaderboards = [
-    #     table for table in leaderboard_recent
-    #     if most_recent_wordle_num >= table['week_end'][0]
-    # ]
-
-    # 8. SAVE ONLY COMPLETE LEADERBOARD
-    # if complete_leaderboards:
-    #     print("Saving complete leaderboard(s)...")
-    #     for table in complete_leaderboards:
-    #         print(f"Saving week {table['week_start'][0]}–{table['week_end'][0]}")
-    #         database.save_leaderboard(table)
-    #     latest_leaderboard = complete_leaderboards[-1]
-    # else:
-    #     print("No complete leaderboard. Loading last saved leaderboard.")
-    #     latest_leaderboard = database.load_leaderboard(last_leaderboard=True)
-
-    #     # Build leaderboard if empty
-    #     scores_df = database.load_scores()
-
-    #     # Recompute week_scores using full DB
-    #     week_scores = ScoreCalculator.week_ranking(scores_df)
-
-    #     # Recompute leaderboard from full DB
-    #     fallback_leaderboard = ScoreCalculator.running_ranking(
-    #         week_scores,
-    #         interest="overall_score",
-    #         database=database
-    #     )[-1]
-
-    #     latest_leaderboard = fallback_leaderboard
-
     if leaderboard_recent == []:
         print("No complete leaderboard. Loading last saved leaderboard.")
         latest_leaderboard = database.load_leaderboard(last_leaderboard=True)
@@ -151,6 +120,8 @@ def main():
     whatsapp.send_message(message)
 
     print("=== END BOT RUN ===")
+
+    return whatsapp
 
 
 if __name__ == "__main__":

@@ -3,13 +3,33 @@ import time
 import re
 from difflib import SequenceMatcher
 from playwright.sync_api import sync_playwright, TimeoutError
+# from playwright.async_api import async_playwright
 from wordle_bot.utils import normalize, similarity
+import tempfile
 
+tmp_profile = tempfile.mkdtemp(prefix="chrome-profile") 
 
 class WhatsAppClient:
 
     def __init__(self, group_name):
         self.playwright = sync_playwright().start()
+        # self.user_data_dir = tmp_profile
+
+        # self.context = self.playwright.chromium.launch_persistent_context(
+        #     user_data_dir=self.user_data_dir,
+        #     executable_path="/usr/bin/google-chrome",
+        #     headless=False,
+        #     args =[
+        #         "--no-sandbox",
+        #         "--disable-gpu",
+        #         "--disable-dev-shm-usage",
+        #         "--disable-infobars",
+        #         "--disable-extensions",
+        #     ]
+        # )
+
+
+        # ### 
         self.context = self.playwright.chromium.launch_persistent_context(
             user_data_dir="browser",
             executable_path="/usr/bin/google-chrome",
@@ -19,6 +39,33 @@ class WhatsAppClient:
         self.page.goto("https://web.whatsapp.com")
         self.page.wait_for_timeout(5000)
         self.open_group(group_name)
+
+        ### Async
+
+        # self.context = await self.playwright.chromium.launch_persistent_context(
+        #     user_data_dir=self.user_data_dir,
+        #     executable_path="/usr/bin/google-chrome",
+        #     headless=False
+        # )
+
+        # self.page = await self.context.new_page()
+        # await self.page.goto("https://web.whatsapp.com")
+        # await self.page.wait_for_timeout(5000)
+        # await self.open_group(group_name)
+
+    
+
+    def close(self):
+        try:
+            self.context.close()
+            self.playwright.stop()
+        except Exception:
+            pass
+
+
+    # async def close(self):
+    #     await self.context.close()
+    #     await self.playwright.stop()
 
     def open_group(self, name):
         search = self.page.locator("input[type='text'][data-tab='3']")
