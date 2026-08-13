@@ -157,8 +157,19 @@ class Database_wordle:
     def save_leaderboard(self,leaderboard_df):
 
             """
-            Save a leaderboard DataFrame to the database.
+            Save a leaderboard DataFrame to the database if wordle_week is complete
             """
+
+            # Determine week completeness
+            week_start = leaderboard_df["week_start"][0]
+            week_end = leaderboard_df["week_end"][0]
+
+            expected_count = week_end - week_start + 1
+            actual_count = leaderboard_df.select(pl.col("score")).height
+
+            if actual_count < expected_count:
+                print(f"Week {week_start}-{week_end} is incomplete ({actual_count}/{expected_count}). Not committing.")
+                return
     
             cursor = self.conn.cursor()
     
@@ -187,7 +198,7 @@ class Database_wordle:
                 )
             self.conn.commit()
 
-    def load_leaderboard(self, wordle_num=None, week_start=None, week_end=None):
+    def load_leaderboard(self, wordle_num=None, week_start=None, week_end=None, last_leaderboard=False):
     
             cursor = self.conn.cursor()
     
@@ -223,6 +234,14 @@ class Database_wordle:
                     WHERE week_start >= ? AND week_end <= ?""",
                     (wordle_num, wordle_num)
                 )
+            elif last_leaderboard:
+                cursor.execute(
+                    """
+                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score 
+                    FROM leaderboard 
+                    WHERE week_end = (SELECT MAX(week_end) FROM leaderboard)
+                    """
+                )
             else:
                 cursor.execute("SELECT player, week_start, week_end, score, rank, overall_rank, overall_score FROM leaderboard")
 
@@ -233,3 +252,9 @@ class Database_wordle:
             df = pl.DataFrame(data, schema=["player", "week_start", "week_end", "score", "rank", "overall_rank", "overall_score"], orient = "row")
     
             return df
+
+    def get_latest_wordle_num(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT MAX(wordle) FROM scores")
+        result = cursor.fetchone()
+        return result[0] if result and result[0] is not None else None

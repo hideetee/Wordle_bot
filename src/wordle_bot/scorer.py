@@ -6,7 +6,7 @@ import re
 from turtle import save
 
 import polars as pl
-from wordle_bot.parser import parser_wordle_score
+from wordle_bot.parser import WordleParser as WP
 
 class ScoreCalculator:
     
@@ -30,13 +30,14 @@ class ScoreCalculator:
         """
 
         if isinstance(self, pl.DataFrame):
-            return self
+            df = self
+            # return self
+        elif self:      
+            data = [(score.player, score.wordle_num, score.score) for score in self]
+            df = pl.DataFrame(data, schema=["player", "wordle_num", "score"], orient = "row")
+        else: 
+            return []
 
-        if not self:
-            return []  
-        
-        data = [(score.player, score.wordle_num, score.score) for score in self]
-        df = pl.DataFrame(data, schema=["player", "wordle_num", "score"], orient = "row")
         df = df.with_columns(
             pl.when(pl.col("score") == "X")
             .then(7)
@@ -108,8 +109,8 @@ class ScoreCalculator:
         Computer weekday for a Wordle, given a known Wordle anchor.
         Sunday = 0, Saturday = 6
         """
-        wordle_anchor = 1860
-        anchor_weekday = 4 # Thursday
+        wordle_anchor = 1875
+        anchor_weekday = 5 # Friday
 
         weekday = (anchor_weekday + (wordle_num - wordle_anchor)) % 7
 
@@ -144,7 +145,7 @@ class ScoreCalculator:
     @staticmethod
     def compute_weekly_score(df):
         """
-        Calculate the total score for a player within all Wordle weeks.
+        Calculate the total score for a player within all Wordle weeks, if wordle_week is complete.
         """
 
         weekly_dfs = []
@@ -155,6 +156,13 @@ class ScoreCalculator:
                & (pl.col("wordle_num") <= week_end)
            )
            weekly_dfs.append((df_week, week_start, week_end))
+
+        # Filter out incomplete weeks (weeks that don't have all 7 days)
+        if weekly_dfs[-1][0]['wordle_num'].max() < weekly_dfs[-1][2]:
+            weekly_dfs = weekly_dfs[:-1]
+        else: 
+            print("Last week is complete.")
+            return []
 
 
         weekly_scores = []
@@ -201,19 +209,31 @@ class ScoreCalculator:
             
         return ranked_weeks
 
-    def running_ranking(weekly_scores, interest="overall_rank"):
+    def running_ranking(weekly_scores, interest="overall_rank", database=None):
         """
         
         weekly_scores: list of polars DataFrames, each representing a week's scores
         returns list of polars DataFrames with an additional column 'overall_rank' and 'overall_score' representing the cumulative rank and score across all weeks
         """
 
-        cumulative_rank = {}
-        cumulative_score = {}
+        # Get the current leaderboard from the database
+        database = database if database else None
+        leaderboard = database.load_leaderboard() if database else None
+
+        if leaderboard is None or leaderboard.is_empty():
+            print("Leaderboard is empty or not found.")
+            cumulative_rank = {}
+            cumulative_score = {}
+        else:
+            current_leaderboard = leaderboard.tail(8)
+            cumulative_rank = {row["player"]: row["overall_rank"] for row in current_leaderboard.iter_rows(named=True)}
+            cumulative_score = {row["player"]: row["overall_score"] for row in current_leaderboard.iter_rows(named=True)}
         
         ranked_weeks = []
 
         for week in weekly_scores:
+            
+            
                 # Compute this week's rank contribution
                 week_rank = (
                     week.group_by("player")

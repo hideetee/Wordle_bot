@@ -1,5 +1,12 @@
 import matplotlib.pyplot as plt
 import polars as pl
+from pathlib import Path
+from difflib import SequenceMatcher
+
+
+# ==============================
+# PLOTTING
+# ==============================
 
 
 def plot_wordle_progress(df, mode="score"):
@@ -93,3 +100,30 @@ def plot_wordle_progress(df, mode="score"):
     plt.ylabel(ylabel)
     plt.tight_layout()
     plt.show()
+
+
+
+# ==============================
+# UTILITY FUNCTIONS
+# ==============================
+
+def normalize(text):
+    lines = [line.strip() for line in text.splitlines()]
+    lines = [line for line in lines if line]
+    return "\n".join(lines)
+
+def similarity(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+
+# ==============================
+# CONFIGURATION
+# ==============================
+
+GROUP_NAME = "Wordle Golf"   # <-- CHANGE THIS
+GROUP_NAME_SEND = "Haidee UK (You)"
+
+DATABASE = Path(__file__).parent / "scores.db"
+
+CHECK_INTERVAL = 5  # Check every week on Monday at 1am 
+

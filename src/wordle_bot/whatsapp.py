@@ -1,508 +1,149 @@
-# Use env scoring_bot to run this script
 
-from email.mime import text
-from itertools import count
-from pyexpat.errors import messages
-from re import search
+import time
 import re
-import sqlite3
-from unicodedata import name
-from datetime import datetime
+from difflib import SequenceMatcher
+from playwright.sync_api import sync_playwright, TimeoutError
+from wordle_bot.utils import normalize, similarity
 
 
-from playwright.sync_api import sync_playwright
+class WhatsAppClient:
 
-import wordle_bot.leaderboard as leaderboard
-
-
-
-# ==============================
-# CONFIGURATION
-# ==============================
-
-GROUP_NAME = "Wordle Golf"   # <-- CHANGE THIS
-DATABASE = "scores.db"
-
-CHECK_INTERVAL = 5
-
-
-
-# class WhatsApp:
-
-#     def __init__(self):
-
-#         self.playwright = sync_playwright().start()
-
-#         self.browser = self.playwright.chromium.launch_persistent_context(
-#             user_data_dir="browser",
-#             headless=False
-#         )
-
-#         self.page = self.browser.new_page()
-
-#         self.page.goto("https://web.whatsapp.com")
-
-#         search = self.page.locator("div[contenteditable='true']").first
-
-#         search.click()
-
-#         search.fill("Wordle Golf")
-
-#         messages = self.page.locator("div.copyable-text")
-
-#         count = messages.count()
-
-#         print(count)
-
-#         for i in range(count):
-
-#             print(messages.nth(i).inner_text())
-
-#         seen_messages = set()
-
-#         messages.get_attribute("data-id")
-
-#         search.press("Enter")
-
-
-
-# ==============================
-# WHATSAPP
-# ==============================
-
-
-class WhatsApp:
-
-
-    def __init__(self):
-
+    def __init__(self, group_name):
         self.playwright = sync_playwright().start()
-
-
-        # self.context = (
-        #     self.playwright
-        #     .chromium
-        #     .launch_persistent_context(
-
-        #         user_data_dir="browser",
-
-        #         headless=False
-
-        #     )
-        # )
-
-        # Use installed browser
         self.context = self.playwright.chromium.launch_persistent_context(
             user_data_dir="browser",
-            # executable_path="/usr/bin/chromium",
             executable_path="/usr/bin/google-chrome",
             headless=False
         )
-
-
         self.page = self.context.pages[0]
-
-
-        self.page.goto(
-            "https://web.whatsapp.com"
-        )
-
-
-        print(
-        """
-        Waiting for WhatsApp login...
-
-        Scan QR code if required.
-        """
-        )
-
-
-        self.page.wait_for_timeout(
-            10000
-        )
-
-
-        self.open_group(
-            GROUP_NAME
-        )
-
-
+        self.page.goto("https://web.whatsapp.com")
+        self.page.wait_for_timeout(5000)
+        self.open_group(group_name)
 
     def open_group(self, name):
-
-        print(
-            f"Opening {name}"
-        )
-
-
-        search = self.page.wait_for_selector("[aria-label='Search or start a new chat']")
+        search = self.page.locator("input[type='text'][data-tab='3']")
         search.click()
         search.fill(name)
+        self.page.wait_for_timeout(2000)
+        search.press("Enter")
+        self.page.wait_for_timeout(3000)
 
+    def scroll_until_cutoff_and_store(self, cutoff_wordle_num):
+        parsed_wordles = []
+        seen = set()
+        WORDLE_NUM = re.compile(r"Wordle\s+([\d,]+)", re.I)
 
-        self.page.wait_for_timeout(
-            3000
-        )
+        while True:
+            elements = self.page.locator("div.copyable-text")
+            count = elements.count()
+            found_cutoff = False
 
-        
-        search.press(
-            "Enter"
-        )
+            for i in range(count):
+                element = elements.nth(i)
+                raw = element.get_attribute("data-pre-plain-text")
+                if raw is None:
+                    continue
 
-        # print("NOT pressing Enter")
+                sender = raw.split(']')[-1].split(': ')[0].strip()[0]
+                inner_text = element.inner_text()
 
+                m = WORDLE_NUM.search(inner_text)
+                if not m:
+                    continue
 
-        self.page.wait_for_timeout(
-            5000
-        )
+                wordle_num = int(m.group(1).replace(",", ""))
+                key = (sender, wordle_num)
+                if key in seen:
+                    continue
+                seen.add(key)
 
+                from wordle_bot.parser import WordleParser
+                parsed_msg = WordleParser.parser_wordle_score([inner_text])
+                parsed_wordles.append((sender, parsed_msg[0][1], parsed_msg[0][2]))
 
-    def get_messages(self):
+                if wordle_num <= cutoff_wordle_num:
+                    found_cutoff = True
 
-        messages = []
+            if found_cutoff:
+                break
 
-
-        print("Searching for messages...")
-
-        # elements = self.page.locator(
-        #     "div.copyable-text"
-        # )    
-        # 
-
-        elements = self.page.locator(
-            'span[data-testid="selectable-text"]',
-            has_text="Wordle"
-            ).first  
-
-
-
-        count = elements.count()
-
-        print(f"Found {count} messages")
-
-
-        for i in range(count):
-
-            element = elements.nth(i)
-
-
-            try:
-
-                text = (
-                    element
-                    .text_content()
-                )
-
-                sender = (
-                    element
-                    .get_attribute(
-                    "data-pre-plain-text"
-                    )
-                )
-
-                # Comment out when done testing, this is just for debugging
-                print("\nNEW MESSAGE")
-                print("------------------------")
-                print(f"Sender: {sender}")
-                print(text)
-                print("------------------------")
-
-                if text and "Wordle" in text:
-                    print(">>> WORDLE FOUND <<<")
-
-                messages.append(
-                {
-
-                    "text": text.strip(),
-
-                    "sender": sender
-
-                })
-                
-                
-            except:
-
-                print(f"Error reading message {i}: {e}")
-
-        print(f"\nReturning {len(messages)} Wordle messages")     
-
-
-        return messages
-
-
-
-    def send_message(self,message):
-
-        box = (
-            self.page
-            .locator(
-            "footer div[contenteditable='true']"
+            self.page.locator('div[data-testid="conversation-panel-messages"]').evaluate(
+                "el => el.scrollBy(0, -2000)"
             )
-        )
+            time.sleep(1)
 
+        return parsed_wordles
 
-        box.fill(
-            message
-        )
+    def message_sent(self, message):
+        last_message = self.page.locator("[data-testid='msg-container']").last
 
+        try:
+            last_message.wait_for(timeout=1000)
+        except TimeoutError:
+            return False
 
-        box.press(
-            "Enter"
-        )
+        fail = last_message.locator("[data-testid='fail-container']").count()
 
+        try:
+            expected = normalize(message)
+            actual = last_message.locator("span[data-testid='selectable-text']").inner_text()
+            actual = normalize(actual)
+        except Exception:
+            return False
 
+        score = similarity(expected, actual)
+        return score >= 0.9 and fail == 0
 
+    def send_message(self, message, max_retries=5, timeout=10):
+        input_box = self.page.locator("[data-testid='conversation-compose-box-input']")
+        time.sleep(1)
 
-# ==============================
-# WORDLE PARSER
-# ==============================
+        for attempt in range(max_retries):
+            if attempt == 0:
+                input_box.wait_for(state="visible")
+                input_box.click()
+                input_box.fill("")
+                input_box.fill(message)
+                input_box.press("Enter")
+            else:
+                last_message = self.page.locator("[data-testid='msg-container']").last
+                fail_button = last_message.locator("[data-testid='fail-container']")
+                if fail_button.count() == 0:
+                    if self.message_sent(message):
+                        return True
+                fail_button.click()
 
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                if self.message_sent(message):
+                    return True
 
-class WordleParser:
+                last_message = self.page.locator("[data-testid='msg-container']").last
+                if last_message.locator("[data-testid='fail-container']").count():
+                    break
 
+                time.sleep(0.2)
 
-    pattern = re.compile(
-        r"Wordle\s+([\d,\s]+)\s+([1-6X])/6",
-        re.I
-    )
+        return False
 
+    # ==============================
+    # CONVERT TO WHATSAPP-FRIENDLY FORMAT
+    # ==============================
     @staticmethod
-    def parse(message):
-
-        result = WordleParser.pattern.search(message)
-
-
-        if result:
-
-            return {
-
-                "wordle":
-                    int(result.group(1)),
-
-
-                "score":
-                    result.group(2)
-
-            }
-
-
-        return None
-
-
-# ==============================
-# HELPER FUNCTIONS
-# ==============================
-
-
-def extract_sender(header):
-
-    if not header:
-
-        return "Unknown"
-
-
-    # Example:
-    #
-    # [12:30, 13/07/2026] Alice:
-
-
-    result = re.search(
-        r"\]\s*(.*?):",
-        header
-    )
-
-
-    if result:
-
-        return result.group(1)
-
-
-    return "Unknown"
-
-
-
-def create_leaderboard(rows):
-
-    if not rows:
-
-        return "No scores yet."
-
-
-    text = (
-        "🏆 Wordle Leaderboard\n\n"
-    )
-
-
-    medals = [
-        "🥇",
-        "🥈",
-        "🥉"
-    ]
-
-
-    for i,row in enumerate(rows):
-
-        player = row[0]
-
-        average = row[1]
-
-
-        if i < 3:
-
-            prefix = medals[i]
-
-        else:
-
-            prefix = f"{i+1}."
-
-
-        text += (
-            f"{prefix} {player}: "
-            f"{average:.2f}\n"
-        )
-
-
-    return text
-
-
-# ==============================
-# CONVERT TO WHATSAPP-FRIENDLY FORMAT
-# ==============================
-
-def df_to_whatsapp_score_rank(df):
-    rows = df.to_dicts()
-    lines = ["Player     Week     Score   Rank"]
-    for r in rows:
-        lines.append(
-            f"{r['player']:6} {r['week_start']:4} - {r['week_end']:4} {r['score']:5}  {r['rank']:4}"
-        )
-    return "\n".join(lines)
-
-def df_to_whatsapp_overall_score_rank(df):
-    rows = df.to_dicts()
-    lines = ["Player  AT Score  AT Rank"]
-    for r in rows:
-        lines.append(
-            f"{r['player']:6} {r['overall_score']:10} {r['overall_rank']:8}"
-        )
-    return "\n".join(lines)
-
-
-
-# ==============================
-# MAIN BOT
-# ==============================
-
-
-def main():
-
-
-    database = Database()
-
-
-    whatsapp = WhatsApp()
-
-
-    parser = WordleParser()
-
-
-    processed = set()
-
-
-    print(
-        "Bot running..."
-    )
-
-
-    while True:
-
-
-        messages = (
-            whatsapp
-            .get_messages()
-        )
-
-
-        for message in messages:
-
-
-            key = (
-                message["sender"],
-                message["text"]
+    def df_to_whatsapp_score_rank(df):
+        rows = df.to_dicts()
+        lines = ["Player     Week     Score   Rank"]
+        for r in rows:
+            lines.append(
+                f"{r['player']:6} {r['week_start']:4} - {r['week_end']:4} {r['score']:5}  {r['rank']:4}"
             )
-
-
-            if key in processed:
-
-                continue
-
-
-            processed.add(key)
-
-
-
-            result = (
-                parser
-                .parse(
-                    message["text"]
-                )
+        return "\n".join(lines)
+    @staticmethod
+    def df_to_whatsapp_overall_score_rank(df):
+        rows = df.to_dicts()
+        lines = ["Player  AT Score  AT Rank"]
+        for r in rows:
+            lines.append(
+                f"{r['player']:6} {r['overall_score']:10} {r['overall_rank']:8}"
             )
-
-
-            if result:
-
-
-                player = extract_sender(
-                    message["sender"]
-                )
-
-                # player = "Test_Player"
-
-
-                print(
-                    player,
-                    result
-                )
-
-
-                database.save_score(
-
-                    player,
-
-                    result["wordle"],
-
-                    result["score"]
-
-                )
-
-                # # For real use, send the leaderboard to WhatsApp. 
-                # board = create_leaderboard(
-
-                #     database.leaderboard()
-
-                # )
-
-
-                # whatsapp.send_message(
-                #     board
-                # )
-
-
-                # for testing, just print in terminal
-                leaderboard = create_leaderboard(database.leaderboard())
-
-                print("\n============================")
-                print("LEADERBOARD")
-                print("============================")
-                print(leaderboard)
-                print("============================\n")
-
-
-        time.sleep(
-            CHECK_INTERVAL
-        )
-
-
-if __name__ == "__main__":
-
-    main()
+        return "\n".join(lines)
