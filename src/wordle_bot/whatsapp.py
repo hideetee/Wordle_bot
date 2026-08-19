@@ -1,84 +1,65 @@
-
-import time
+import logging
 import re
-from difflib import SequenceMatcher
-from playwright.sync_api import sync_playwright, TimeoutError
-# from playwright.async_api import async_playwright
-from wordle_bot.utils import normalize, similarity
-import tempfile
+import time
+from typing import List, Optional, Sequence, Tuple
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
+import polars as pl
 
-tmp_profile = tempfile.mkdtemp(prefix="chrome-profile") 
+from wordle_bot.config import SIMILARITY_THRESHOLD
+from wordle_bot.formatter import format_overall_score_table, format_weekly_score_table
+from wordle_bot.parser import WordleParser
+from wordle_bot.utils import normalize, similarity
+
+logger = logging.getLogger(__name__)
+
 
 class WhatsAppClient:
+    """Automates WhatsApp Web interaction via Playwright to scrape scores and send messages."""
 
-    def __init__(self, group_name):
-        self.playwright = sync_playwright().start()
-        # self.user_data_dir = tmp_profile
+    def __init__(
+        self,
+        group_name: Optional[str] = None,
+        user_data_dir: str = "browser",
+        executable_path: str = "/usr/bin/google-chrome",
+        headless: bool = False,
+    ) -> None:
+        self.group_name = group_name
+        self.user_data_dir = user_data_dir
+        self.executable_path = executable_path
+        self.headless = headless
 
-        # self.context = self.playwright.chromium.launch_persistent_context(
-        #     user_data_dir=self.user_data_dir,
-        #     executable_path="/usr/bin/google-chrome",
-        #     headless=False,
-        #     args =[
-        #         "--no-sandbox",
-        #         "--disable-gpu",
-        #         "--disable-dev-shm-usage",
-        #         "--disable-infobars",
-        #         "--disable-extensions",
-        #     ]
-        # )
-
-
-        # ### 
-        self.context = self.playwright.chromium.launch_persistent_context(
-            user_data_dir="browser",
-            executable_path="/usr/bin/google-chrome",
-            headless=False
+        self._playwright = sync_playwright().start()
+        self._context = self._playwright.chromium.launch_persistent_context(
+            user_data_dir=self.user_data_dir,
+            executable_path=self.executable_path,
+            headless=self.headless,
         )
-        # self.context = self.playwright.chromium.launch_persistent_context(
-        #     user_data_dir="/home/hidee/.config/google-chrome/Default",
-        #     executable_path="/usr/bin/google-chrome",
-        #     headless=False,
-        #     args=[
-        #         "--remote-debugging-port=9222",
-        #         "--disable-gpu",
-        #         "--no-sandbox",
-        #     ]
-        # )
-
-        self.page = self.context.pages[0]
+        self.page = self._context.pages[0] if self._context.pages else self._context.new_page()
         self.page.goto("https://web.whatsapp.com")
         self.page.wait_for_timeout(5000)
-        self.open_group(group_name)
 
-        ### Async
+        if self.group_name:
+            self.open_group(self.group_name)
 
-        # self.context = await self.playwright.chromium.launch_persistent_context(
-        #     user_data_dir=self.user_data_dir,
-        #     executable_path="/usr/bin/google-chrome",
-        #     headless=False
-        # )
+    def __enter__(self) -> "WhatsAppClient":
+        return self
 
-        # self.page = await self.context.new_page()
-        # await self.page.goto("https://web.whatsapp.com")
-        # await self.page.wait_for_timeout(5000)
-        # await self.open_group(group_name)
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
 
-    
-
-    def close(self):
+    def close(self) -> None:
+        """Close browser context and stop Playwright process."""
         try:
-            self.context.close()
-            self.playwright.stop()
-        except Exception:
-            pass
+            self._context.close()
+        except Exception as e:
+            logger.debug(f"Error closing browser context: {e}")
+        try:
+            self._playwright.stop()
+        except Exception as e:
+            logger.debug(f"Error stopping Playwright: {e}")
 
-
-    # async def close(self):
-    #     await self.context.close()
-    #     await self.playwright.stop()
-
-    def open_group(self, name):
+    def open_group(self, name: str) -> None:
+        """Search for and open a WhatsApp chat/group by name."""
         search = self.page.locator("input[type='text'][data-tab='3']")
         search.click()
         search.fill(name)
@@ -86,10 +67,16 @@ class WhatsAppClient:
         search.press("Enter")
         self.page.wait_for_timeout(3000)
 
-    def scroll_until_cutoff_and_store(self, cutoff_wordle_num):
-        parsed_wordles = []
+    def scroll_until_cutoff_and_store(
+        self, cutoff_wordle_num: Optional[int] = None
+    ) -> List[Tuple[str, int, str]]:
+        """
+        Scroll through chat history until a Wordle score <= cutoff_wordle_num is found.
+        Returns a list of parsed (sender, wordle_num, score_str) tuples.
+        """
+        parsed_wordles: List[Tuple[str, int, str]] = []
         seen = set()
-        WORDLE_NUM = re.compile(r"Wordle\s+([\d,]+)", re.I)
+        wordle_pattern = re.compile(r"Wordle\s+([\d,]+)", re.IGNORECASE)
 
         while True:
             elements = self.page.locator("div.copyable-text")
@@ -102,29 +89,32 @@ class WhatsAppClient:
                 if raw is None:
                     continue
 
-                sender = raw.split(']')[-1].split(': ')[0].strip()[0]
+                # Extract sender name
+                parts = raw.split("]")[-1].split(":")
+                sender = parts[0].strip() if parts else "Unknown"
                 inner_text = element.inner_text()
 
-                m = WORDLE_NUM.search(inner_text)
-                if not m:
+                match = wordle_pattern.search(inner_text)
+                if not match:
                     continue
 
-                wordle_num = int(m.group(1).replace(",", ""))
+                wordle_num = int(match.group(1).replace(",", ""))
                 key = (sender, wordle_num)
                 if key in seen:
                     continue
                 seen.add(key)
 
-                from wordle_bot.parser import WordleParser
-                parsed_msg = WordleParser.parser_wordle_score([inner_text])
-                parsed_wordles.append((sender, parsed_msg[0][1], parsed_msg[0][2]))
+                parsed_msg = WordleParser.parse_messages([inner_text])
+                if parsed_msg:
+                    parsed_wordles.append((sender, parsed_msg[0][1], parsed_msg[0][2]))
 
-                if wordle_num <= cutoff_wordle_num:
+                if cutoff_wordle_num is not None and wordle_num <= cutoff_wordle_num:
                     found_cutoff = True
 
             if found_cutoff:
                 break
 
+            # Scroll up in message panel to load older messages
             self.page.locator('div[data-testid="conversation-panel-messages"]').evaluate(
                 "el => el.scrollBy(0, -2000)"
             )
@@ -132,15 +122,16 @@ class WhatsAppClient:
 
         return parsed_wordles
 
-    def message_sent(self, message):
+    def message_sent(self, message: str) -> bool:
+        """Check if the latest chat message matches the expected sent message content."""
         last_message = self.page.locator("[data-testid='msg-container']").last
 
         try:
             last_message.wait_for(timeout=1000)
-        except TimeoutError:
+        except PlaywrightTimeoutError:
             return False
 
-        fail = last_message.locator("[data-testid='fail-container']").count()
+        fail_count = last_message.locator("[data-testid='fail-container']").count()
 
         try:
             expected = normalize(message)
@@ -150,9 +141,10 @@ class WhatsAppClient:
             return False
 
         score = similarity(expected, actual)
-        return score >= 0.9 and fail == 0
+        return score >= SIMILARITY_THRESHOLD and fail_count == 0
 
-    def send_message(self, message, max_retries=5, timeout=10):
+    def send_message(self, message: str, max_retries: int = 5, timeout: float = 10.0) -> bool:
+        """Send a text message in the currently open chat with automatic retries."""
         input_box = self.page.locator("[data-testid='conversation-compose-box-input']")
         time.sleep(1)
 
@@ -166,10 +158,10 @@ class WhatsAppClient:
             else:
                 last_message = self.page.locator("[data-testid='msg-container']").last
                 fail_button = last_message.locator("[data-testid='fail-container']")
-                if fail_button.count() == 0:
-                    if self.message_sent(message):
-                        return True
-                fail_button.click()
+                if fail_button.count() == 0 and self.message_sent(message):
+                    return True
+                if fail_button.count() > 0:
+                    fail_button.click()
 
             deadline = time.time() + timeout
             while time.time() < deadline:
@@ -177,31 +169,18 @@ class WhatsAppClient:
                     return True
 
                 last_message = self.page.locator("[data-testid='msg-container']").last
-                if last_message.locator("[data-testid='fail-container']").count():
+                if last_message.locator("[data-testid='fail-container']").count() > 0:
                     break
 
                 time.sleep(0.2)
 
         return False
 
-    # ==============================
-    # CONVERT TO WHATSAPP-FRIENDLY FORMAT
-    # ==============================
+    # Backward-compatible static presentation methods
     @staticmethod
-    def df_to_whatsapp_score_rank(df):
-        rows = df.to_dicts()
-        lines = ["Player     Week     Score   Rank"]
-        for r in rows:
-            lines.append(
-                f"{r['player']:6} {r['week_start']:4} - {r['week_end']:4} {r['score']:5}  {r['rank']:4}"
-            )
-        return "\n".join(lines)
+    def df_to_whatsapp_score_rank(df: pl.DataFrame) -> str:
+        return format_weekly_score_table(df)
+
     @staticmethod
-    def df_to_whatsapp_overall_score_rank(df):
-        rows = df.to_dicts()
-        lines = ["Player  AT Score  AT Rank"]
-        for r in rows:
-            lines.append(
-                f"{r['player']:6} {r['overall_score']:10} {r['overall_rank']:8}"
-            )
-        return "\n".join(lines)
+    def df_to_whatsapp_overall_score_rank(df: pl.DataFrame) -> str:
+        return format_overall_score_table(df)
