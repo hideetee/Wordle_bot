@@ -29,6 +29,20 @@ class Database_wordle:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                player TEXT,
+                week_start INTEGER,
+                week_end INTEGER,
+                score INTEGER,
+                rank INTEGER,
+                overall_rank REAL,
+                overall_score REAL,
+                PRIMARY KEY(player, week_start, week_end)
+            )
+            """
+        )
         self.conn.commit()
 
     def save_score(self, player, wordle, score):
@@ -159,49 +173,23 @@ class Database_wordle:
             print(f"Saved {table_name} to database.")
         conn.commit()
 
-    def save_leaderboard(self,leaderboard_df):
+    def save_leaderboard(self, leaderboard_df):
+        """
+        Save a leaderboard DataFrame to the database.
+        """
+        if leaderboard_df is None or leaderboard_df.height == 0:
+            return
 
-            """
-            Save a leaderboard DataFrame to the database if wordle_week is complete
-            """
-
-            # Determine week completeness
-            week_start = leaderboard_df["week_start"][0]
-            week_end = leaderboard_df["week_end"][0]
-
-            expected_count = week_end - week_start + 1
-            actual_count = leaderboard_df.select(pl.col("score")).height
-
-            if actual_count < expected_count:
-                print(f"Week {week_start}-{week_end} is incomplete ({actual_count}/{expected_count}). Not committing.")
-                return
-    
-            cursor = self.conn.cursor()
-    
-    
+        cursor = self.conn.cursor()
+        for row in leaderboard_df.to_dicts():
             cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS leaderboard (
-                player TEXT,
-                score INTEGER,
-                week_start INTEGER,
-                week_end INTEGER,
-                rank INTEGER,
-                overall_rank INTEGER,
-                overall_score REAL,
-                PRIMARY KEY(player, week_start, week_end)
+                """
+                INSERT OR REPLACE INTO leaderboard (player, week_start, week_end, score, rank, overall_rank, overall_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (row['player'], row['week_start'], row['week_end'], row['score'], row['rank'], row['overall_rank'], row['overall_score'])
             )
-            """)
-
-            for row in leaderboard_df.to_dicts():
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO leaderboard (player, week_start, week_end, score, rank, overall_rank, overall_score)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (row['player'], row['week_start'], row['week_end'], row['score'], row['rank'], row['overall_rank'], row['overall_score'])
-                )
-            self.conn.commit()
+        self.conn.commit()
 
     def load_leaderboard(self, wordle_num=None, week_start=None, week_end=None, last_leaderboard=False):
     

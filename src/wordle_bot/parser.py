@@ -69,3 +69,8 @@ class WordleParser:
             score = res.group(2).strip()
             results.append((sender, wordle, score))
         return results
+
+
+# Module-level convenience aliases
+parser_wordle_score = WordleParser.parser_wordle_score
+parse_wordle_score = WordleParser.parser_wordle_score
