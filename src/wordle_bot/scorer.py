@@ -1,7 +1,7 @@
 from typing import Any, List, Optional, Sequence, Union
 import polars as pl
 
-from wordle_bot.calendar import get_unique_week_ranges, get_wordle_week
+from wordle_bot.calendar_utils import get_unique_week_ranges, get_wordle_week
 from wordle_bot.config import FAIL_PENALTY_SCORE
 from wordle_bot.models import ScoreRecord
 

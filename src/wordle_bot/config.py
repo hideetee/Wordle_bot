@@ -14,8 +14,8 @@ DAYS_PER_WEEK = 7
 SIMILARITY_THRESHOLD = 0.9
 DEFAULT_CHECK_INTERVAL = 30
 
-# Base directory for user data
-BASE_DIR = Path(os.path.expanduser("~/.wordlebot"))
+# Base directory for wordle_bot data and config
+BASE_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = BASE_DIR / "config.json"
 DATABASE_PATH = BASE_DIR / "scores.db"
 

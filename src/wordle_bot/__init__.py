@@ -1,6 +1,6 @@
 """Wordle Bot - Automated tracking, scoring, and leaderboard management for Wordle Golf."""
 
-from wordle_bot.calendar import get_unique_week_ranges, get_wordle_week, wordle_week
+from wordle_bot.calendar_utils import get_unique_week_ranges, get_wordle_week, wordle_week
 from wordle_bot.config import (
     DAYS_PER_WEEK,
     FAIL_PENALTY_SCORE,

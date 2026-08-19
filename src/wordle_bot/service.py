@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 import polars as pl
 
-from wordle_bot.calendar import get_unique_week_ranges
+from wordle_bot.calendar_utils import get_unique_week_ranges
 from wordle_bot.config import WordleConfig, load_config
 from wordle_bot.database import WordleRepository
 from wordle_bot.formatter import format_leaderboard_announcement

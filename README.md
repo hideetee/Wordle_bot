@@ -33,7 +33,7 @@ Wordle_bot/
 │   ├── app.py                  # Streamlit Web UI Dashboard
 │   └── wordle_bot/
 │       ├── __init__.py         # Package public exports
-│       ├── calendar.py         # Wordle week calculation & date-anchor logic
+│       ├── calendar_utils.py   # Wordle week calculation & date-anchor logic
 │       ├── config.json         # WhatsApp group name configuration
 │       ├── config.py           # Configuration helpers & domain constants
 │       ├── database.py         # Database repository (WordleRepository)

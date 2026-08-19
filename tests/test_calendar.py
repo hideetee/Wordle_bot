@@ -1,5 +1,5 @@
 import pytest
-from wordle_bot.calendar import get_unique_week_ranges, get_wordle_week
+from wordle_bot.calendar_utils import get_unique_week_ranges, get_wordle_week
 
 
 def test_get_wordle_week_anchor_date():

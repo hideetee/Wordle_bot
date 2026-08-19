@@ -104,3 +104,12 @@ def test_save_and_load_leaderboard(temp_db_path):
     assert loaded.shape[0] == 2
     assert "player" in loaded.columns
     assert "overall_rank" in loaded.columns
+
+
+def test_default_database_path(monkeypatch, tmp_path):
+    custom_db = tmp_path / "custom_scores.db"
+    monkeypatch.setattr("wordle_bot.database.get_database_path", lambda: custom_db)
+    repo = Database_wordle()
+    assert repo.database_path == str(custom_db)
+    repo.close()
+
