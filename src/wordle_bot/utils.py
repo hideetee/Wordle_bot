@@ -1,60 +1,80 @@
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Dict, List, Optional
 import matplotlib.pyplot as plt
 import polars as pl
-from pathlib import Path
-from difflib import SequenceMatcher
-import json
-import os
+
+from wordle_bot.config import (
+    BASE_DIR,
+    DATABASE_PATH,
+    DEFAULT_CONFIG,
+    WordleConfig,
+    get_database_path,
+    load_config,
+    save_config,
+)
+
+# For backward compatibility
+DATABASE = str(get_database_path())
 
 
 # ==============================
-# PLOTTING
+# PLOTTING UTILITIES
 # ==============================
 
-def get_player_colors(players):
-    cmap = plt.get_cmap("tab20")   # 10 distinct colours
+
+def get_player_colors(players: List[str]) -> Dict[str, tuple]:
+    """Return a consistent color map for a list of players."""
+    cmap = plt.get_cmap("tab20")
     return {
         player: cmap(i % cmap.N)
         for i, player in enumerate(players)
     }
-            
-def plot_wordle_progress(df, mode="score", colours = None):
+
+
+def plot_wordle_progress(
+    df: pl.DataFrame,
+    mode: str = "score",
+    colours: Optional[Dict[str, tuple]] = None,
+):
     """
+    Plot overall Wordle progress over time.
     mode = "score" → plot overall_score
     mode = "rank"  → plot overall_rank
     """
+    if df is None or df.height == 0:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.set_title("No Data Available")
+        return plt
 
     if colours is None:
-        colours = get_player_colors(df['player'].unique())
+        colours = get_player_colors(df["player"].unique().to_list())
 
     plt.figure(figsize=(10, 6))
     ax = plt.gca()
 
     summary_rows = []
 
-
-    for player in df['player'].unique():
+    for player in df["player"].unique():
         player_scores = df.filter(pl.col("player") == player)
 
-
-        # Plot depending on mode
         if mode == "score":
             plt.plot(
-                player_scores['week_start'],
-                player_scores['overall_score'],
-                marker='o',
-                color=colours[player] ,
-                label=player
+                player_scores["week_start"],
+                player_scores["overall_score"],
+                marker="o",
+                color=colours[player],
+                label=player,
             )
-        else:  # mode == "rank"
+        else:
             plt.plot(
-                player_scores['week_start'],
-                player_scores['overall_rank'],
-                marker='o',
-                color=colours[player] ,
-                label=player
+                player_scores["week_start"],
+                player_scores["overall_rank"],
+                marker="o",
+                color=colours[player],
+                label=player,
             )
 
-        # Get the latest row (max week_start)
         latest = player_scores.sort("week_start", descending=True).head(1)
 
         summary_rows.append({
@@ -64,13 +84,11 @@ def plot_wordle_progress(df, mode="score", colours = None):
             "score": latest["score"][0],
             "AT_score": latest["overall_score"][0],
             "rank": latest["rank"][0],
-            "AT_rank": latest["overall_rank"][0]
+            "AT_rank": latest["overall_rank"][0],
         })
 
-    # Convert summary rows to a DataFrame
     summary_df = pl.DataFrame(summary_rows)
 
-    # Sort depending on mode
     if mode == "score":
         summary_df = summary_df.sort("AT_score", descending=False)
         summary_lines = [
@@ -88,25 +106,23 @@ def plot_wordle_progress(df, mode="score", colours = None):
         ylabel = "Overall Rank"
         title = "Overall Rank by Player"
 
-    # Title for the annotation box
     summary_title = (
         f"Wordle week {summary_df['week_start'].max()} - "
         f"{summary_df['week_end'].max()}"
     )
 
     summary_text = summary_title + "\n" + "\n".join(summary_lines)
+    props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
 
-    props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-
-    # Bottom-right, nudged slightly left/up
     ax.text(
-        0.95, 0.1,
+        0.95,
+        0.1,
         summary_text,
         transform=ax.transAxes,
         fontsize=10,
-        ha='right',
-        va='bottom',
-        bbox=props
+        ha="right",
+        va="bottom",
+        bbox=props,
     )
 
     plt.legend()
@@ -114,73 +130,21 @@ def plot_wordle_progress(df, mode="score", colours = None):
     plt.xlabel("Wordle Week Start")
     plt.ylabel(ylabel)
     plt.tight_layout()
-    # plt.show()
     return plt
 
 
-
-
-
-
 # ==============================
-# UTILITY FUNCTIONS
+# STRING & TEXT UTILITIES
 # ==============================
 
-def normalize(text):
+
+def normalize(text: str) -> str:
+    """Normalize multiline text by stripping whitespace and removing empty lines."""
     lines = [line.strip() for line in text.splitlines()]
     lines = [line for line in lines if line]
     return "\n".join(lines)
 
-def similarity(a, b):
+
+def similarity(a: str, b: str) -> float:
+    """Calculate similarity ratio between two strings using SequenceMatcher."""
     return SequenceMatcher(None, a, b).ratio()
-
-
-DATABASE = Path(__file__).parent / "scores.db"
-
-
-### Set local save path
-
-
-# import os
-# import json
-# 
-BASE_DIR = os.path.expanduser("~/.wordlebot")
-os.makedirs(BASE_DIR, exist_ok=True)
-
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
-
-def load_config():
-    with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
-
-def save_config(config):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
-
-
-
-
-# DEFAULT_CONFIG = {
-#     "GROUP_NAME": "Read from...",
-#     "GROUP_NAME_SEND": "Send to..."
-# }
-
-# def save_config(config: dict):
-#     with open(CONFIG_FILE, "w") as f:
-#         json.dump(config, f, indent=4)
-
-# def load_config():
-#     # If file doesn't exist → create it
-#     if not os.path.exists(CONFIG_FILE):
-#         save_config(DEFAULT_CONFIG)
-#         return DEFAULT_CONFIG.copy()
-
-#     # If file exists → try to load it
-#     try:
-#         with open(CONFIG_FILE, "r") as f:
-#             return json.load(f)
-
-#     except (json.JSONDecodeError, ValueError):
-#         # File is empty or corrupted → restore defaults
-#         save_config(DEFAULT_CONFIG)
-#         return DEFAULT_CONFIG.copy()
