@@ -1,253 +1,277 @@
-import sqlite3
-
-from wordle_bot.scorer import ScoreCalculator as SC
-import polars as pl
 import os
+import sqlite3
+from pathlib import Path
+from typing import Optional, Union
+
+import polars as pl
+
+from wordle_bot.config import get_database_path
+from wordle_bot.models import ScoreRecord
 
 
-BASE_DIR = os.path.expanduser("~/.wordlebot")   # per-user folder
-os.makedirs(BASE_DIR, exist_ok=True)
+class WordleRepository:
+    """Repository interface for persisting player scores and leaderboard records to SQLite."""
 
-DATABASE = os.path.join(BASE_DIR, "scores.db")
-class Database_wordle:
-    def __init__(self, database_path):
-        self.conn = sqlite3.connect(
-            database_path,
-            check_same_thread=False
-        )
+    def __init__(self, database_path: Optional[Union[str, Path]] = None) -> None:
+        if database_path is None:
+            self.database_path = str(get_database_path())
+        else:
+            self.database_path = str(database_path)
+
+        # Ensure parent directory exists
+        parent_dir = os.path.dirname(self.database_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
+        self.conn = sqlite3.connect(self.database_path, check_same_thread=False)
         self.create_tables()
 
-    def create_tables(self):
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS scores (
-                player TEXT,
-                wordle INTEGER,
-                score INTEGER,
-                PRIMARY KEY(player, wordle)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS leaderboard (
-                player TEXT,
-                week_start INTEGER,
-                week_end INTEGER,
-                score INTEGER,
-                rank INTEGER,
-                overall_rank REAL,
-                overall_score REAL,
-                PRIMARY KEY(player, week_start, week_end)
-            )
-            """
-        )
-        self.conn.commit()
+    def __enter__(self) -> "WordleRepository":
+        return self
 
-    def save_score(self, player, wordle, score):
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO scores (player, wordle, score)
-            VALUES (?, ?, ?)
-            """,
-            (player, wordle, score)
-        )
-        self.conn.commit()
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
 
-    
+    def close(self) -> None:
+        """Close the database connection."""
+        try:
+            self.conn.close()
+        except sqlite3.Error:
+            pass
 
-    def save_score_if_missing_or_7(self, df):
-
-        # # make sure scores are int or None
-        df = df.with_columns(
-            pl.col("score").cast(pl.Int64)
-        )
-
-        cursor = self.conn.cursor()
-
-        inserted_lines = 0
-        updated_lines = 0.
-        existing_lines = 0
-
-        for row in df.to_dicts():
-
-            player = row["player"]
-            wordle = row["wordle_num"]
-            score = row["score"]
-
-            # check existing score for each player and wordle
-            cursor.execute(
+    def create_tables(self) -> None:
+        """Initialize the database schema if tables do not exist."""
+        with self.conn:
+            self.conn.execute(
                 """
-                SELECT score 
-                FROM scores 
-                WHERE player = ? AND wordle = ?
-                """,
-
-                (player, wordle)
+                CREATE TABLE IF NOT EXISTS scores (
+                    player TEXT,
+                    wordle INTEGER,
+                    score INTEGER,
+                    PRIMARY KEY(player, wordle)
+                )
+                """
             )
-            existing = cursor.fetchone()
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS leaderboard (
+                    player TEXT,
+                    week_start INTEGER,
+                    week_end INTEGER,
+                    score INTEGER,
+                    rank REAL,
+                    overall_rank REAL,
+                    overall_score REAL,
+                    PRIMARY KEY(player, week_start, week_end)
+                )
+                """
+            )
 
-            if existing is None:
-                # Insert the new score if it doesn't exist
-                self.save_score(player, wordle, score)
-                inserted_lines += 1
-                continue
+    def save_score(self, player: str, wordle: int, score: Optional[int]) -> None:
+        """Insert or replace a score for a player and Wordle number."""
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT OR REPLACE INTO scores (player, wordle, score)
+                VALUES (?, ?, ?)
+                """,
+                (player, wordle, score),
+            )
 
-            existing_score = existing[0]
+    def save_score_if_missing_or_7(self, df: pl.DataFrame) -> None:
+        """
+        Insert incoming scores if unrecorded, or update existing record if currently null.
+        Preserves existing valid scores.
+        """
+        if df is None or df.height == 0:
+            return
 
-            if existing_score == None:
-                # Update the score if the existing score is None
-                self.save_score(player, wordle, score)
-                updated_lines += 1
-            else:
-                existing_lines += 1
+        df = df.with_columns(pl.col("score").cast(pl.Int64))
+        cursor = self.conn.cursor()
 
-        print(f"Inserted lines: {inserted_lines}, Updated lines: {updated_lines}, Existing lines: {existing_lines}")
-        
+        with self.conn:
+            for row in df.to_dicts():
+                player = row["player"]
+                wordle = row["wordle_num"]
+                score = row["score"]
 
+                cursor.execute(
+                    """
+                    SELECT score FROM scores
+                    WHERE player = ? AND wordle = ?
+                    """,
+                    (player, wordle),
+                )
+                existing = cursor.fetchone()
 
+                if existing is None or existing[0] is None:
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO scores (player, wordle, score)
+                        VALUES (?, ?, ?)
+                        """,
+                        (player, wordle, score),
+                    )
 
-
-    def load_scores(self, wordle_num=None, wordle_min=None, wordle_max=None):
-
+    def load_scores(
+        self,
+        wordle_num: Optional[int] = None,
+        wordle_min: Optional[int] = None,
+        wordle_max: Optional[int] = None,
+    ) -> pl.DataFrame:
+        """
+        Load scores matching the specified filters, returned as a sorted Polars DataFrame.
+        """
         cursor = self.conn.cursor()
 
         if wordle_min is not None and wordle_max is not None:
             cursor.execute(
                 "SELECT player, wordle, score FROM scores WHERE wordle BETWEEN ? AND ?",
-                (wordle_min, wordle_max)
+                (wordle_min, wordle_max),
             )
         elif wordle_min is not None:
             cursor.execute(
                 "SELECT player, wordle, score FROM scores WHERE wordle >= ?",
-                (wordle_min,)
+                (wordle_min,),
             )
         elif wordle_max is not None:
             cursor.execute(
                 "SELECT player, wordle, score FROM scores WHERE wordle <= ?",
-                (wordle_max,)
+                (wordle_max,),
             )
         elif wordle_num is not None:
             cursor.execute(
-                "SELECT player, wordle, score FROM scores WHERE wordle = ?", 
-                (wordle_num,)
+                "SELECT player, wordle, score FROM scores WHERE wordle = ?",
+                (wordle_num,),
             )
         else:
             cursor.execute("SELECT player, wordle, score FROM scores")
 
         rows = cursor.fetchall()
-        
+        if not rows:
+            return pl.DataFrame(
+                schema={"player": pl.String, "wordle_num": pl.Int64, "score": pl.Int64}
+            )
 
-        scores = [
-            SC(
-                player=row[0], 
-                wordle_num=row[1],
-                score=row[2] 
-                )
-            for row in rows
-        ]
-
-        data = [(score.player, score.wordle_num, score.score) for score in scores]
-        df = pl.DataFrame(data, schema=["player", "wordle_num", "score"], orient = "row").sort(by=["wordle_num", "player"])
+        data = [(row[0], row[1], row[2]) for row in rows]
+        df = pl.DataFrame(
+            data, schema=["player", "wordle_num", "score"], orient="row"
+        ).sort(by=["wordle_num", "player"])
 
         return df
 
-    def save_weekly_scores(conn, weekly_scores):
-
-        """
-        Save a list of weekly scores to the database.
-        """
-
-        cursor = conn.cursor()
-        for i, week_df in enumerate(weekly_scores):
-            table_name = f"week_{i}"
-    
-            week_df.write_database(
-                table_name=table_name,
-                connection=conn,
-                if_table_exists="replace"
-            )
-    
-            print(f"Saved {table_name} to database.")
-        conn.commit()
-
-    def save_leaderboard(self, leaderboard_df):
-        """
-        Save a leaderboard DataFrame to the database.
-        """
+    def save_leaderboard(self, leaderboard_df: pl.DataFrame) -> None:
+        """Persist a completed weekly leaderboard DataFrame to the database."""
         if leaderboard_df is None or leaderboard_df.height == 0:
             return
 
+        with self.conn:
+            for row in leaderboard_df.to_dicts():
+                self.conn.execute(
+                    """
+                    INSERT OR REPLACE INTO leaderboard
+                    (player, week_start, week_end, score, rank, overall_rank, overall_score)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["player"],
+                        row["week_start"],
+                        row["week_end"],
+                        row["score"],
+                        row["rank"],
+                        row["overall_rank"],
+                        row["overall_score"],
+                    ),
+                )
+
+    def load_leaderboard(
+        self,
+        wordle_num: Optional[int] = None,
+        week_start: Optional[int] = None,
+        week_end: Optional[int] = None,
+        last_leaderboard: bool = False,
+    ) -> pl.DataFrame:
+        """
+        Load leaderboard records matching filters, returned as a Polars DataFrame.
+        """
         cursor = self.conn.cursor()
-        for row in leaderboard_df.to_dicts():
+
+        if week_start is not None and week_end is not None:
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO leaderboard (player, week_start, week_end, score, rank, overall_rank, overall_score)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                FROM leaderboard
+                WHERE week_start >= ? AND week_end <= ?
                 """,
-                (row['player'], row['week_start'], row['week_end'], row['score'], row['rank'], row['overall_rank'], row['overall_score'])
+                (week_start, week_end),
             )
-        self.conn.commit()
+        elif week_start is not None:
+            cursor.execute(
+                """
+                SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                FROM leaderboard
+                WHERE week_start >= ?
+                """,
+                (week_start,),
+            )
+        elif week_end is not None:
+            cursor.execute(
+                """
+                SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                FROM leaderboard
+                WHERE week_end <= ?
+                """,
+                (week_end,),
+            )
+        elif wordle_num is not None:
+            cursor.execute(
+                """
+                SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                FROM leaderboard
+                WHERE week_start <= ? AND week_end >= ?
+                """,
+                (wordle_num, wordle_num),
+            )
+        elif last_leaderboard:
+            cursor.execute(
+                """
+                SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                FROM leaderboard
+                WHERE week_end = (SELECT MAX(week_end) FROM leaderboard)
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                FROM leaderboard
+                """
+            )
 
-    def load_leaderboard(self, wordle_num=None, week_start=None, week_end=None, last_leaderboard=False):
-    
-            cursor = self.conn.cursor()
-    
-            if week_start is not None and week_end is not None:
-                cursor.execute(
-                    """
-                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score 
-                    FROM leaderboard 
-                    WHERE week_start >= ? AND week_end <= ?""",
-                    (week_start, week_end)
-                )
-            elif week_start is not None:
-                cursor.execute(
-                    """
-                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score 
-                    FROM leaderboard 
-                    WHERE week_start >= ?""",
-                    (week_start,)
-                )
-            elif week_end is not None:
-                cursor.execute(
-                    """
-                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score 
-                    FROM leaderboard 
-                    WHERE week_end <= ?""",
-                    (week_end,)
-                )
-            elif wordle_num is not None:
-                cursor.execute(
-                    """
-                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score 
-                    FROM leaderboard 
-                    WHERE week_start >= ? AND week_end <= ?""",
-                    (wordle_num, wordle_num)
-                )
-            elif last_leaderboard:
-                cursor.execute(
-                    """
-                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score 
-                    FROM leaderboard 
-                    WHERE week_end = (SELECT MAX(week_end) FROM leaderboard)
-                    """
-                )
-            else:
-                cursor.execute("SELECT player, week_start, week_end, score, rank, overall_rank, overall_score FROM leaderboard")
+        rows = cursor.fetchall()
+        schema = {
+            "player": pl.String,
+            "week_start": pl.Int64,
+            "week_end": pl.Int64,
+            "score": pl.Int64,
+            "rank": pl.Float64,
+            "overall_rank": pl.Float64,
+            "overall_score": pl.Float64,
+        }
 
-            rows = cursor.fetchall()
-            
-    
-            data = [(row[0], row[1], row[2], row[3], row[4], row[5], row[6]) for row in rows]
-            df = pl.DataFrame(data, schema=["player", "week_start", "week_end", "score", "rank", "overall_rank", "overall_score"], orient = "row")
-    
-            return df
+        if not rows:
+            return pl.DataFrame(schema=schema)
 
-    def get_latest_wordle_num(self):
+        data = [(row[0], row[1], row[2], row[3], row[4], row[5], row[6]) for row in rows]
+        return pl.DataFrame(data, schema=schema, orient="row")
+
+    def get_latest_wordle_num(self) -> Optional[int]:
+        """Return the maximum Wordle number present in the scores table, or None if empty."""
         cursor = self.conn.cursor()
         cursor.execute("SELECT MAX(wordle) FROM scores")
         result = cursor.fetchone()
         return result[0] if result and result[0] is not None else None
+
+
+# Backward-compatible alias
+Database_wordle = WordleRepository
