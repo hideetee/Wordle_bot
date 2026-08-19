@@ -7,7 +7,8 @@ from wordle_bot.parser import WordleParser
 from wordle_bot.scorer import ScoreCalculator
 from wordle_bot.whatsapp import WhatsAppClient
 from wordle_bot.utils import DATABASE, load_config
-import streamlit as st
+# import streamlit as st
+import json
 
 def get_current_leaderboard(last_leaderboard=False):
  
@@ -21,12 +22,14 @@ def get_current_leaderboard(last_leaderboard=False):
 
 def main():
 
-    # config = load_config()
+    config = load_config()
     # GROUP_NAME = config["GROUP_NAME"]
     # GROUP_NAME_SEND = config["GROUP_NAME_SEND"]
 
-    GROUP_NAME = st.session_state.config["GROUP_NAME"]
-    GROUP_NAME_SEND = st.session_state.config["GROUP_NAME_SEND"]
+    # GROUP_NAME = st.session_state.config["GROUP_NAME"]
+    # GROUP_NAME_SEND = st.session_state.config["GROUP_NAME_SEND"]
+    GROUP_NAME = config["GROUP_NAME"]
+    GROUP_NAME_SEND = config["GROUP_NAME_SEND"]
 
     database = Database_wordle(DATABASE)
     whatsapp = WhatsAppClient(GROUP_NAME)
@@ -52,8 +55,18 @@ def main():
     print(f"Latest in DB after saving: {latest}")
 
     # 4. COMPUTE WEEK RANGE LIMIT
-    calc_limit = ScoreCalculator.store_week_ranges(pl.DataFrame({"wordle_num": [latest]}))[0][0]
-    print(f"calc_limit={calc_limit}")
+    # Need calc_limit from leaderboard if exists
+
+    leaderboard = database.load_leaderboard()
+
+    # if leaderboard exists, get last wordle_end from last table in leaderboard
+    if len(leaderboard) > 0:
+        last_table = leaderboard[-1]
+        last_wordle_end = last_table["week_end"][0]
+        print(f"Last wordle_end in leaderboard: {last_wordle_end}")
+        calc_limit = ScoreCalculator.store_week_ranges(pl.DataFrame({"wordle_num": [last_wordle_end]}))[0][1] + 1
+        print(f"calc_limit from leaderboard: {calc_limit}")
+    
 
     # 5. SELECT SCORES FOR CURRENT WEEK 
     if latest >= calc_limit:
@@ -66,8 +79,7 @@ def main():
 
     print(f"Scores in current week: {scores_recent.shape[0]}")
 
-    # Check if leaderboard exists
-    leaderboard = database.load_leaderboard()
+    # If leaderboard is empty, create leaderboard using all scores
     if len(leaderboard) == 0:
         # Create leaderboard using all scores if it doesn't exist
         print("Leaderboard does not exist. Creating leaderboard using all scores.")
@@ -75,12 +87,22 @@ def main():
         leaderboard_all = ScoreCalculator.running_ranking(
             weekly_scores_all,
             interest="overall_score",
-            database=database
+            leaderboard= pl.DataFrame(
+                schema = {
+                    "player": pl.Utf8,
+                    "week_start": pl.Int64,
+                    "week_end": pl.Int64,
+                    "score": pl.Int64,
+                    "rank": pl.Int64,
+                    "overall_rank": pl.Int64,
+                    "overall_score": pl.Int64
+                })
+            
         )
         print(leaderboard_all[-1])
 
         for table in leaderboard_all:
-            print(f"Saving week {table['week_start'][0]}–{table['week_end'][0]}")
+            print(f"Saving all leaderboards: week {table['week_start'][0]}–{table['week_end'][0]}")
             database.save_leaderboard(table)
 
     else: 
@@ -90,8 +112,12 @@ def main():
         leaderboard_recent = ScoreCalculator.running_ranking(
             week_scores,
             interest="overall_score",
-            database=database
+            leaderboard=leaderboard
         )
+
+        for table in leaderboard_recent:
+            print(f"Saving recent leaderboards: week {table['week_start'][0]}–{table['week_end'][0]}")
+            database.save_leaderboard(table)
 
     if leaderboard_recent == []:
         print("No complete leaderboard. Loading last saved leaderboard.")
@@ -117,7 +143,7 @@ def main():
 
     # 10. SEND
     whatsapp.open_group(GROUP_NAME_SEND)
-    whatsapp.send_message(message)
+    # whatsapp.send_message(message)
 
     print("=== END BOT RUN ===")
 

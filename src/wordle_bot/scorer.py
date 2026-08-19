@@ -3,10 +3,8 @@
 # ==============================
 
 import re
-from turtle import save
-
 import polars as pl
-from wordle_bot.parser import WordleParser as WP
+
 
 class ScoreCalculator:
     
@@ -123,7 +121,7 @@ class ScoreCalculator:
     @staticmethod
     def store_week_ranges(df):
         """
-        Store the week_ranges for all unique Wordle weeks in a DataFrame that is .
+        Store the week_ranges for all unique Wordle weeks in a DataFrame.
         """
 
         week_ranges = []
@@ -159,10 +157,11 @@ class ScoreCalculator:
 
         # Filter out incomplete weeks (weeks that don't have all 7 days)
         if weekly_dfs[-1][0]['wordle_num'].max() < weekly_dfs[-1][2]:
+            print("Last week is incomplete.")
             weekly_dfs = weekly_dfs[:-1]
         else: 
             print("Last week is complete.")
-            return []
+            
 
 
         weekly_scores = []
@@ -172,13 +171,13 @@ class ScoreCalculator:
             weekly_score = df_week.group_by('player').agg(pl.sum('score')).sort('score')
             weekly_score = weekly_score.with_columns(
                             # pl.lit(wordle_week).alias("wordle_week"),
-                            pl.lit(week_start).alias("week_start"),
-                            pl.lit(week_end).alias("week_end")
+                            pl.lit(week_start).cast(pl.Int64).alias("week_start"),
+                            pl.lit(week_end).cast(pl.Int64).alias("week_end")
                         )
             weekly_scores.append(weekly_score)
             
 
-        return weekly_scores
+        return weekly_scores if weekly_scores else []
 
 
 
@@ -209,26 +208,36 @@ class ScoreCalculator:
             
         return ranked_weeks
 
-    def running_ranking(weekly_scores, interest="overall_rank", database=None):
+    def running_ranking(weekly_scores, interest="overall_rank", leaderboard=None):
         """
         
         weekly_scores: list of polars DataFrames, each representing a week's scores
         returns list of polars DataFrames with an additional column 'overall_rank' and 'overall_score' representing the cumulative rank and score across all weeks
         """
 
-        # Get the current leaderboard from the database
-        database = database if database else None
-        leaderboard = database.load_leaderboard() if database else None
-
-        if leaderboard is None or leaderboard.is_empty():
-            print("Leaderboard is empty or not found.")
-            cumulative_rank = {}
-            cumulative_score = {}
+        # If leaderboard is None, create empty  leaderboard
+        if leaderboard is None:
+            empty_lb = pl.DataFrame(
+            schema={
+                "player": pl.String,
+                "week_start": pl.Int64,
+                "week_end": pl.Int64,
+                "score": pl.Int64,
+                "rank": pl.Int64,
+                "overall_rank": pl.Float64,
+                "overall_score": pl.Float64,
+            }
+)   
+        # If leaderboard is not None, get last leaderboard table
         else:
-            current_leaderboard = leaderboard.tail(8)
+            # Get the current leaderboard from the database
+            player_num = len(leaderboard['player'].unique())
+            current_leaderboard = leaderboard.tail(player_num)  
             cumulative_rank = {row["player"]: row["overall_rank"] for row in current_leaderboard.iter_rows(named=True)}
             cumulative_score = {row["player"]: row["overall_score"] for row in current_leaderboard.iter_rows(named=True)}
-        
+
+
+        # Calculate new scores
         ranked_weeks = []
 
         for week in weekly_scores:

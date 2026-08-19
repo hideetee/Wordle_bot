@@ -35,6 +35,17 @@ class WhatsAppClient:
             executable_path="/usr/bin/google-chrome",
             headless=False
         )
+        # self.context = self.playwright.chromium.launch_persistent_context(
+        #     user_data_dir="/home/hidee/.config/google-chrome/Default",
+        #     executable_path="/usr/bin/google-chrome",
+        #     headless=False,
+        #     args=[
+        #         "--remote-debugging-port=9222",
+        #         "--disable-gpu",
+        #         "--no-sandbox",
+        #     ]
+        # )
+
         self.page = self.context.pages[0]
         self.page.goto("https://web.whatsapp.com")
         self.page.wait_for_timeout(5000)

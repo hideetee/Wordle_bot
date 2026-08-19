@@ -1,9 +1,14 @@
 import sqlite3
 
-from wordle_bot.scorer import ScoreCalculator
 from wordle_bot.scorer import ScoreCalculator as SC
 import polars as pl
+import os
 
+
+BASE_DIR = os.path.expanduser("~/.wordlebot")   # per-user folder
+os.makedirs(BASE_DIR, exist_ok=True)
+
+DATABASE = os.path.join(BASE_DIR, "scores.db")
 class Database_wordle:
     def __init__(self, database_path):
         self.conn = sqlite3.connect(

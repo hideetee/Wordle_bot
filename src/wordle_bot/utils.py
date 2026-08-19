@@ -3,6 +3,7 @@ import polars as pl
 from pathlib import Path
 from difflib import SequenceMatcher
 import json
+import os
 
 
 # ==============================
@@ -137,12 +138,49 @@ def similarity(a, b):
 DATABASE = Path(__file__).parent / "scores.db"
 
 
+### Set local save path
+
+
+# import os
+# import json
+# 
+BASE_DIR = os.path.expanduser("~/.wordlebot")
+os.makedirs(BASE_DIR, exist_ok=True)
+
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+
 def load_config():
-    with open("config.json", "r") as f:
+    with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
 def save_config(config):
-    with open("config.json", "w") as f:
+    with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
 
 
+
+
+# DEFAULT_CONFIG = {
+#     "GROUP_NAME": "Read from...",
+#     "GROUP_NAME_SEND": "Send to..."
+# }
+
+# def save_config(config: dict):
+#     with open(CONFIG_FILE, "w") as f:
+#         json.dump(config, f, indent=4)
+
+# def load_config():
+#     # If file doesn't exist → create it
+#     if not os.path.exists(CONFIG_FILE):
+#         save_config(DEFAULT_CONFIG)
+#         return DEFAULT_CONFIG.copy()
+
+#     # If file exists → try to load it
+#     try:
+#         with open(CONFIG_FILE, "r") as f:
+#             return json.load(f)
+
+#     except (json.JSONDecodeError, ValueError):
+#         # File is empty or corrupted → restore defaults
+#         save_config(DEFAULT_CONFIG)
+#         return DEFAULT_CONFIG.copy()
