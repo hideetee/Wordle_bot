@@ -30,24 +30,32 @@ The bot uses **Playwright** to scrape Wordle results shared in WhatsApp, parses 
 Wordle_bot/
 ├── pyproject.toml              # Package configuration & metadata
 ├── src/
+│   ├── app.py                  # Streamlit Web UI Dashboard
 │   └── wordle_bot/
-│       ├── __init__.py
+│       ├── __init__.py         # Package public exports
+│       ├── calendar.py         # Wordle week calculation & date-anchor logic
 │       ├── config.json         # WhatsApp group name configuration
-│       ├── config.py           # Configuration helpers
-│       ├── database.py         # Database interface (Database_wordle)
-│       ├── leaderboard.py      # Leaderboard processing module
-│       ├── main.py             # Main entry point & execution flow
-│       ├── models.py           # Data models
+│       ├── config.py           # Configuration helpers & domain constants
+│       ├── database.py         # Database repository (WordleRepository)
+│       ├── formatter.py        # WhatsApp ASCII tables & announcement formatter
+│       ├── main.py             # Main CLI entry point & execution flow
+│       ├── models.py           # Typed domain dataclasses
 │       ├── parser.py           # Wordle score regex parser (WordleParser)
-│       ├── scheduler.py        # Automated job scheduler
-│       ├── scorer.py           # Scoring logic & ranking calculations (ScoreCalculator)
-│       ├── scores.db           # SQLite database storing scores & leaderboards
-│       ├── streamlit.py        # Streamlit Web UI Application
+│       ├── scorer.py           # Scoring logic & ranking calculations
+│       ├── service.py          # WordleBotService orchestration workflow
 │       ├── utils.py            # Plotting, text normalization & helper functions
 │       └── whatsapp.py         # WhatsApp Web automation via Playwright (WhatsAppClient)
 └── tests/                      # Pytest unit test suite
+    ├── test_calendar.py
+    ├── test_compute_weekly_score.py
+    ├── test_config.py
+    ├── test_database.py
+    ├── test_formatter.py
     ├── test_parser_wordle_score.py
     ├── test_score_cleaner.py
+    ├── test_scorer.py
+    ├── test_service.py
+    ├── test_week_ranking.py
     └── test_wordle_week.py
 ```
 
@@ -103,7 +111,7 @@ Update `src/wordle_bot/config.json` with the exact names of your WhatsApp target
 To launch the web interface:
 
 ```bash
-streamlit run src/wordle_bot/streamlit.py
+streamlit run src/app.py
 ```
 
 From the dashboard you can:
