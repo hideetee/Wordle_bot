@@ -53,3 +53,28 @@ def test_service_run_workflow(mock_repo):
     assert "🏆 Wordle Leaderboard" in result["message"]
     mock_client.open_group.assert_called_with("Test Send")
     mock_client.send_message.assert_called_once()
+
+
+def test_service_with_wordle_start(mock_repo):
+    config = WordleConfig(group_name="Test Group", group_name_send="Test Send", wordle_start=1877)
+    service = WordleBotService(repository=mock_repo, config=config)
+
+    # Scrape 2 full weeks: 1870-1876 and 1877-1883
+    all_scores = []
+    for day in range(1870, 1884):
+        all_scores.append(("Alice", day, "3"))
+        all_scores.append(("Bob", day, "4"))
+
+    mock_client = MagicMock()
+    mock_client.scroll_until_cutoff_and_store.return_value = all_scores
+
+    scores_df = service.scrape_and_sync_scores(mock_client)
+    # Only scores >= 1877 should be loaded
+    assert scores_df["wordle_num"].min() == 1877
+    assert scores_df.height == 14  # 7 days * 2 players
+
+    lb = service.process_and_update_leaderboards()
+    assert lb.height == 2
+    assert lb["week_start"][0] == 1877
+    assert lb["week_end"][0] == 1883
+

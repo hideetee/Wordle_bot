@@ -24,24 +24,36 @@ DATABASE_PATH = BASE_DIR / "scores.db"
 class WordleConfig:
     group_name: str = "Wordle Golf"
     group_name_send: str = "Haidee UK (You)"
+    wordle_start: Optional[int] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "WordleConfig":
+        raw_start = data.get("WORDLE_START")
+        wordle_start = None
+        if raw_start is not None and raw_start != "":
+            try:
+                wordle_start = int(raw_start)
+            except (ValueError, TypeError):
+                wordle_start = None
+
         return cls(
             group_name=data.get("GROUP_NAME", "Wordle Golf"),
             group_name_send=data.get("GROUP_NAME_SEND", "Haidee UK (You)"),
+            wordle_start=wordle_start,
         )
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "GROUP_NAME": self.group_name,
             "GROUP_NAME_SEND": self.group_name_send,
+            "WORDLE_START": self.wordle_start,
         }
 
 
 DEFAULT_CONFIG = {
     "GROUP_NAME": "Wordle Golf",
     "GROUP_NAME_SEND": "Haidee UK (You)",
+    "WORDLE_START": None,
 }
 
 

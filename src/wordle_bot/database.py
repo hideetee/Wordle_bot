@@ -118,10 +118,14 @@ class WordleRepository:
         wordle_num: Optional[int] = None,
         wordle_min: Optional[int] = None,
         wordle_max: Optional[int] = None,
+        wordle_start: Optional[int] = None,
     ) -> pl.DataFrame:
         """
         Load scores matching the specified filters, returned as a sorted Polars DataFrame.
         """
+        if wordle_start is not None and wordle_min is None:
+            wordle_min = wordle_start
+
         cursor = self.conn.cursor()
 
         if wordle_min is not None and wordle_max is not None:
@@ -190,13 +194,35 @@ class WordleRepository:
         week_start: Optional[int] = None,
         week_end: Optional[int] = None,
         last_leaderboard: bool = False,
+        wordle_start: Optional[int] = None,
     ) -> pl.DataFrame:
         """
         Load leaderboard records matching filters, returned as a Polars DataFrame.
         """
+        if wordle_start is not None and week_start is None:
+            week_start = wordle_start
+
         cursor = self.conn.cursor()
 
-        if week_start is not None and week_end is not None:
+        if last_leaderboard:
+            if week_start is not None:
+                cursor.execute(
+                    """
+                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                    FROM leaderboard
+                    WHERE week_start >= ? AND week_end = (SELECT MAX(week_end) FROM leaderboard WHERE week_start >= ?)
+                    """,
+                    (week_start, week_start),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
+                    FROM leaderboard
+                    WHERE week_end = (SELECT MAX(week_end) FROM leaderboard)
+                    """
+                )
+        elif week_start is not None and week_end is not None:
             cursor.execute(
                 """
                 SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
@@ -231,14 +257,6 @@ class WordleRepository:
                 WHERE week_start <= ? AND week_end >= ?
                 """,
                 (wordle_num, wordle_num),
-            )
-        elif last_leaderboard:
-            cursor.execute(
-                """
-                SELECT player, week_start, week_end, score, rank, overall_rank, overall_score
-                FROM leaderboard
-                WHERE week_end = (SELECT MAX(week_end) FROM leaderboard)
-                """
             )
         else:
             cursor.execute(

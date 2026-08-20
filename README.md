@@ -95,12 +95,14 @@ Update `src/wordle_bot/config.json` with the exact names of your WhatsApp target
 ```json
 {
     "GROUP_NAME": "Your Wordle WhatsApp Group",
-    "GROUP_NAME_SEND": "Your Wordle WhatsApp Group"
+    "GROUP_NAME_SEND": "Your Wordle WhatsApp Group",
+    "WORDLE_START": null
 }
 ```
 
 * **`GROUP_NAME`**: The WhatsApp group to scrape Wordle results from.
 * **`GROUP_NAME_SEND`**: The WhatsApp group to send leaderboard updates to.
+* **`WORDLE_START`**: (Optional) Integer Wordle number to limit scoring and leaderboards to start from (e.g. `1870`). Set to `null` to score from the beginning.
 
 ---
 

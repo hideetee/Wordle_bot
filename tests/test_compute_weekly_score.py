@@ -91,4 +91,20 @@ def test_compute_weekly_score_1_complete_week_and_1_incomplete_week():
     ## Assert
     for df_actual, df_expected in zip(scores_rank, scores_rank_expected):
         assert_frame_equal(df_actual, df_expected)
+
+
+def test_compute_weekly_score_with_wordle_start():
+    # 2 full weeks: 1870-1876 and 1877-1883
+    scores_df = pl.DataFrame({
+        "player": ["Alice", "Bob"] * 14,
+        "wordle_num": [w for w in range(1870, 1884) for _ in range(2)],
+        "score": [3, 4] * 14,
+    })
+
+    # wordle_start = 1877 limits to only the second week
+    scores_rank = SC.compute_weekly_score(scores_df, wordle_start=1877)
+    assert len(scores_rank) == 1
+    assert scores_rank[0]["week_start"][0] == 1877
+    assert scores_rank[0]["week_end"][0] == 1883
+
     

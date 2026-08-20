@@ -11,24 +11,38 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 
-def get_current_leaderboard(last_leaderboard: bool = False) -> pl.DataFrame:
+def get_current_leaderboard(
+    last_leaderboard: bool = False,
+    wordle_start: Optional[int] = None,
+) -> pl.DataFrame:
     """Fetch current leaderboard DataFrame from database."""
     repo = WordleRepository()
-    return repo.load_leaderboard(last_leaderboard=last_leaderboard)
+    config = WordleConfig.from_dict(load_config())
+    effective_start = wordle_start if wordle_start is not None else config.wordle_start
+    return repo.load_leaderboard(last_leaderboard=last_leaderboard, wordle_start=effective_start)
 
 
-def main(send_message: bool = True) -> Optional[WhatsAppClient]:
+def main(
+    send_message: bool = True,
+    wordle_start: Optional[int] = None,
+) -> Optional[WhatsAppClient]:
     """
     Main entry point for running the Wordle Bot workflow.
     """
     logger.info("=== START WORDLE BOT RUN ===")
     config = WordleConfig.from_dict(load_config())
+    if wordle_start is not None:
+        config.wordle_start = wordle_start
     service = WordleBotService(config=config)
 
     whatsapp_client = WhatsAppClient(group_name=config.group_name)
 
     try:
-        result = service.run(client=whatsapp_client, send_announcement=send_message)
+        result = service.run(
+            client=whatsapp_client,
+            send_announcement=send_message,
+            wordle_start=config.wordle_start,
+        )
         logger.info("=== LEADERBOARD ANNOUNCEMENT ===")
         print(result["message"])
         logger.info("=== END WORDLE BOT RUN ===")

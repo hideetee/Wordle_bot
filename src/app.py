@@ -19,13 +19,26 @@ st.header("⚙️ Settings")
 
 group_name_val = st.session_state.config.get("GROUP_NAME", "Wordle Golf")
 group_name_send_val = st.session_state.config.get("GROUP_NAME_SEND", "Haidee UK (You)")
+wordle_start_val = st.session_state.config.get("WORDLE_START", None)
 
 group_name_input = st.text_input("WhatsApp Group Name (Read from)", value=group_name_val, key="input_group_name")
 group_send_input = st.text_input("WhatsApp Send-To Name", value=group_name_send_val, key="input_group_send")
+wordle_start_str = str(wordle_start_val) if wordle_start_val is not None else ""
+wordle_start_input = st.text_input(
+    "Wordle Start Number (Optional limit)",
+    value=wordle_start_str,
+    key="input_wordle_start",
+    help="Limit scoring and leaderboard to start from this Wordle number (leave empty for all)",
+)
 
 if st.button("Save Settings"):
     st.session_state.config["GROUP_NAME"] = group_send_input or group_name_input
     st.session_state.config["GROUP_NAME_SEND"] = group_send_input
+    cleaned_start = wordle_start_input.strip()
+    if cleaned_start.isdigit():
+        st.session_state.config["WORDLE_START"] = int(cleaned_start)
+    else:
+        st.session_state.config["WORDLE_START"] = None
     save_config(st.session_state.config)
     st.success("Settings updated successfully!")
 
@@ -37,12 +50,13 @@ st.header("🚀 Run Wordle Bot")
 if st.button("Run Bot & Sync Scores"):
     with st.spinner("Connecting to WhatsApp and syncing scores..."):
         try:
-            whatsapp = main(send_message=True)
+            wordle_start = st.session_state.config.get("WORDLE_START")
+            whatsapp = main(send_message=True, wordle_start=wordle_start)
             if whatsapp is not None:
                 whatsapp.close()
 
-            st.session_state.last_leaderboard = get_current_leaderboard(last_leaderboard=True)
-            st.session_state.full_leaderboard = get_current_leaderboard(last_leaderboard=False)
+            st.session_state.last_leaderboard = get_current_leaderboard(last_leaderboard=True, wordle_start=wordle_start)
+            st.session_state.full_leaderboard = get_current_leaderboard(last_leaderboard=False, wordle_start=wordle_start)
             st.success("Scores synced and leaderboard updated successfully!")
         except Exception as e:
             st.error(f"Error running Wordle Bot: {e}")
@@ -52,10 +66,11 @@ if st.button("Run Bot & Sync Scores"):
 # -----------------------------------------
 st.header("📊 Current Leaderboard")
 
+wordle_start = st.session_state.config.get("WORDLE_START")
 if "last_leaderboard" not in st.session_state:
-    st.session_state.last_leaderboard = get_current_leaderboard(last_leaderboard=True)
+    st.session_state.last_leaderboard = get_current_leaderboard(last_leaderboard=True, wordle_start=wordle_start)
 if "full_leaderboard" not in st.session_state:
-    st.session_state.full_leaderboard = get_current_leaderboard(last_leaderboard=False)
+    st.session_state.full_leaderboard = get_current_leaderboard(last_leaderboard=False, wordle_start=wordle_start)
 
 if st.session_state.last_leaderboard is not None and st.session_state.last_leaderboard.height > 0:
     st.subheader("Latest Week Summary")

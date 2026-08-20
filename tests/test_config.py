@@ -12,13 +12,19 @@ from wordle_bot.config import (
 
 
 def test_wordle_config_dataclass():
-    cfg = WordleConfig(group_name="Group A", group_name_send="Group B")
+    cfg = WordleConfig(group_name="Group A", group_name_send="Group B", wordle_start=1870)
     d = cfg.to_dict()
-    assert d == {"GROUP_NAME": "Group A", "GROUP_NAME_SEND": "Group B"}
+    assert d == {"GROUP_NAME": "Group A", "GROUP_NAME_SEND": "Group B", "WORDLE_START": 1870}
 
     from_d = WordleConfig.from_dict(d)
     assert from_d.group_name == "Group A"
     assert from_d.group_name_send == "Group B"
+    assert from_d.wordle_start == 1870
+
+    # Test default None
+    cfg_default = WordleConfig(group_name="Group A", group_name_send="Group B")
+    assert cfg_default.wordle_start is None
+    assert cfg_default.to_dict() == {"GROUP_NAME": "Group A", "GROUP_NAME_SEND": "Group B", "WORDLE_START": None}
 
 
 def test_load_and_save_config(monkeypatch, tmp_path):
@@ -31,7 +37,7 @@ def test_load_and_save_config(monkeypatch, tmp_path):
     assert loaded == DEFAULT_CONFIG
 
     # Modify and save
-    custom = {"GROUP_NAME": "Custom Group", "GROUP_NAME_SEND": "My Channel"}
+    custom = {"GROUP_NAME": "Custom Group", "GROUP_NAME_SEND": "My Channel", "WORDLE_START": 1850}
     save_config(custom)
 
     loaded_custom = load_config()

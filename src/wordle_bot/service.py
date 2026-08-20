@@ -24,6 +24,7 @@ class WordleBotService:
         self,
         repository: Optional[WordleRepository] = None,
         config: Optional[WordleConfig] = None,
+        wordle_start: Optional[int] = None,
     ) -> None:
         self.repository = repository or WordleRepository()
         if config is None:
@@ -32,13 +33,26 @@ class WordleBotService:
         else:
             self.config = config
 
-    def scrape_and_sync_scores(self, client: WhatsAppClient) -> pl.DataFrame:
+        if wordle_start is not None:
+            self.config.wordle_start = wordle_start
+
+    def scrape_and_sync_scores(
+        self,
+        client: WhatsAppClient,
+        wordle_start: Optional[int] = None,
+    ) -> pl.DataFrame:
         """
         Scrape new messages from WhatsApp, clean/fill penalty scores, and persist to database.
         """
+        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
         latest_wordle = self.repository.get_latest_wordle_num()
         cutoff = (latest_wordle - 1) if latest_wordle is not None else None
-        logger.info(f"Latest in DB: {latest_wordle}, cutoff: {cutoff}")
+
+        if effective_start is not None:
+            if cutoff is None or effective_start > cutoff:
+                cutoff = effective_start - 1
+
+        logger.info(f"Latest in DB: {latest_wordle}, cutoff: {cutoff}, wordle_start: {effective_start}")
 
         raw_messages = client.scroll_until_cutoff_and_store(cutoff)
         logger.info(f"Scraped {len(raw_messages)} messages from WhatsApp")
@@ -47,25 +61,29 @@ class WordleBotService:
             raw_df = pl.DataFrame(
                 raw_messages, schema=["player", "wordle_num", "score"], orient="row"
             )
-            cleaned_scores = clean_and_fill_scores(raw_df)
+            cleaned_scores = clean_and_fill_scores(raw_df, wordle_start=effective_start)
             self.repository.save_score_if_missing_or_7(cleaned_scores)
 
-        return self.repository.load_scores()
+        return self.repository.load_scores(wordle_min=effective_start)
 
-    def process_and_update_leaderboards(self) -> pl.DataFrame:
+    def process_and_update_leaderboards(
+        self,
+        wordle_start: Optional[int] = None,
+    ) -> pl.DataFrame:
         """
-        Compute weekly rankings and cumulative standings across all scores and save them.
+        Compute weekly rankings and cumulative standings across scores and save them.
         Returns the latest leaderboard DataFrame.
         """
-        scores_df = self.repository.load_scores()
+        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
+        scores_df = self.repository.load_scores(wordle_min=effective_start)
         if scores_df.height == 0:
-            return self.repository.load_leaderboard(last_leaderboard=True)
+            return self.repository.load_leaderboard(last_leaderboard=True, wordle_start=effective_start)
 
-        existing_leaderboard = self.repository.load_leaderboard()
+        existing_leaderboard = self.repository.load_leaderboard(wordle_start=effective_start)
 
         if existing_leaderboard.height == 0:
-            # First run or empty leaderboard: compute across all historical scores
-            weekly_ranks = rank_weekly_scores(scores_df)
+            # First run or empty leaderboard: compute across all historical scores from effective_start
+            weekly_ranks = rank_weekly_scores(scores_df, wordle_start=effective_start)
             full_leaderboard = calculate_running_leaderboard(
                 weekly_ranks, interest="overall_score"
             )
@@ -79,35 +97,52 @@ class WordleBotService:
 
         if last_table_end is not None:
             calc_limit = last_table_end + 1
+        elif effective_start is not None:
+            calc_limit = effective_start
         else:
             calc_limit = 0
 
         scores_recent = scores_df.filter(pl.col("wordle_num") >= calc_limit)
 
         if scores_recent.height > 0:
-            recent_weeks = rank_weekly_scores(scores_recent)
+            recent_weeks = rank_weekly_scores(scores_recent, wordle_start=calc_limit)
             updated_leaderboard = calculate_running_leaderboard(
                 recent_weeks, interest="overall_score", leaderboard=existing_leaderboard
             )
             for table in updated_leaderboard:
                 self.repository.save_leaderboard(table)
 
-        return self.repository.load_leaderboard(last_leaderboard=True)
+        return self.repository.load_leaderboard(last_leaderboard=True, wordle_start=effective_start)
 
-    def get_leaderboard(self, last_only: bool = False) -> pl.DataFrame:
+    def get_leaderboard(
+        self,
+        last_only: bool = False,
+        wordle_start: Optional[int] = None,
+    ) -> pl.DataFrame:
         """Fetch current leaderboard records from repository."""
-        return self.repository.load_leaderboard(last_leaderboard=last_only)
+        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
+        return self.repository.load_leaderboard(last_leaderboard=last_only, wordle_start=effective_start)
 
-    def generate_announcement_message(self, leaderboard_df: Optional[pl.DataFrame] = None) -> str:
+    def generate_announcement_message(
+        self,
+        leaderboard_df: Optional[pl.DataFrame] = None,
+        wordle_start: Optional[int] = None,
+    ) -> str:
         """Construct the WhatsApp announcement message string."""
         if leaderboard_df is None or leaderboard_df.height == 0:
-            leaderboard_df = self.get_leaderboard(last_only=True)
+            leaderboard_df = self.get_leaderboard(last_only=True, wordle_start=wordle_start)
         return format_leaderboard_announcement(leaderboard_df)
 
-    def run(self, client: Optional[WhatsAppClient] = None, send_announcement: bool = True) -> Dict[str, Any]:
+    def run(
+        self,
+        client: Optional[WhatsAppClient] = None,
+        send_announcement: bool = True,
+        wordle_start: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Execute the end-to-end Wordle Bot synchronization workflow.
         """
+        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
         should_close_client = False
         if client is None:
             client = WhatsAppClient(self.config.group_name)
@@ -115,13 +150,13 @@ class WordleBotService:
 
         try:
             # 1. Scrape & Sync
-            self.scrape_and_sync_scores(client)
+            self.scrape_and_sync_scores(client, wordle_start=effective_start)
 
             # 2. Process Rankings
-            latest_leaderboard = self.process_and_update_leaderboards()
+            latest_leaderboard = self.process_and_update_leaderboards(wordle_start=effective_start)
 
             # 3. Format Announcement
-            message = self.generate_announcement_message(latest_leaderboard)
+            message = self.generate_announcement_message(latest_leaderboard, wordle_start=effective_start)
 
             # 4. Send Message if configured
             sent = False
