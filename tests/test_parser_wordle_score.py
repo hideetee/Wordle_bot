@@ -10,7 +10,6 @@ import wordle_bot.parser as parser
 def test_wordle_simple():
     # Arrange
     msg = "1/25/26, 1:32 AM - H: Wordle 1,681 5/6*"
-    # Haidee Tang: Wordle 1,681 5/6*
     # Act
     result = parser.parser_wordle_score([msg])
 
