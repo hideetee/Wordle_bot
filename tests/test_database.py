@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 import polars as pl
 from polars.testing import assert_frame_equal
-from wordle_bot.database import Database_wordle
+from game_bot.database import Database_game
 
 
 @pytest.fixture
@@ -17,14 +17,14 @@ def temp_db_path():
 
 
 def test_database_initialization_creates_tables(temp_db_path):
-    db = Database_wordle(temp_db_path)
+    db = Database_game(temp_db_path)
     cursor = db.conn.cursor()
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scores'")
     assert cursor.fetchone() is not None
 
 
 def test_save_and_load_score(temp_db_path):
-    db = Database_wordle(temp_db_path)
+    db = Database_game(temp_db_path)
     db.save_score("Alice", 1000, 4)
     db.save_score("Bob", 1000, 5)
 
@@ -34,7 +34,7 @@ def test_save_and_load_score(temp_db_path):
 
 
 def test_save_score_if_missing_or_7(temp_db_path):
-    db = Database_wordle(temp_db_path)
+    db = Database_game(temp_db_path)
     db.save_score("Alice", 1000, 3)
 
     incoming_df = pl.DataFrame({
@@ -60,7 +60,7 @@ def test_save_score_if_missing_or_7(temp_db_path):
 
 
 def test_load_scores_filters(temp_db_path):
-    db = Database_wordle(temp_db_path)
+    db = Database_game(temp_db_path)
     db.save_score("Alice", 100, 3)
     db.save_score("Alice", 101, 4)
     db.save_score("Alice", 102, 5)
@@ -77,7 +77,7 @@ def test_load_scores_filters(temp_db_path):
 
 
 def test_get_latest_wordle_num(temp_db_path):
-    db = Database_wordle(temp_db_path)
+    db = Database_game(temp_db_path)
     assert db.get_latest_wordle_num() is None
 
     db.save_score("Alice", 500, 3)
@@ -86,7 +86,7 @@ def test_get_latest_wordle_num(temp_db_path):
 
 
 def test_save_and_load_leaderboard(temp_db_path):
-    db = Database_wordle(temp_db_path)
+    db = Database_game(temp_db_path)
 
     leaderboard_df = pl.DataFrame({
         "player": ["Alice", "Bob"],
@@ -107,7 +107,7 @@ def test_save_and_load_leaderboard(temp_db_path):
 
 
 def test_load_scores_and_leaderboard_with_wordle_start(temp_db_path):
-    db = Database_wordle(temp_db_path)
+    db = Database_game(temp_db_path)
     db.save_score("Alice", 100, 3)
     db.save_score("Alice", 105, 4)
     db.save_score("Alice", 110, 5)
@@ -140,8 +140,8 @@ def test_load_scores_and_leaderboard_with_wordle_start(temp_db_path):
 
 def test_default_database_path(monkeypatch, tmp_path):
     custom_db = tmp_path / "custom_scores.db"
-    monkeypatch.setattr("wordle_bot.database.get_database_path", lambda: custom_db)
-    repo = Database_wordle()
+    monkeypatch.setattr("game_bot.database.get_database_path", lambda: custom_db)
+    repo = Database_game()
     assert repo.database_path == str(custom_db)
     repo.close()
 

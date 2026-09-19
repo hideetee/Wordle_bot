@@ -5,10 +5,10 @@ from typing import List, Optional, Sequence, Tuple
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 import polars as pl
 
-from wordle_bot.config import SIMILARITY_THRESHOLD
-from wordle_bot.formatter import format_overall_score_table, format_weekly_score_table
-from wordle_bot.parser import WordleParser
-from wordle_bot.utils import normalize, similarity
+from game_bot.config import SIMILARITY_THRESHOLD
+from game_bot.formatter import format_overall_score_table, format_weekly_score_table
+from game_bot.parser import WordleParser
+from game_bot.utils import normalize, similarity
 
 logger = logging.getLogger(__name__)
 

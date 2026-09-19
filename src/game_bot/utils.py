@@ -4,18 +4,22 @@ from typing import Dict, List, Optional
 import matplotlib.pyplot as plt
 import polars as pl
 
-from wordle_bot.config import (
+from game_bot.config import (
     BASE_DIR,
-    DATABASE_PATH,
-    DEFAULT_CONFIG,
+    WORDLE_DATABASE_PATH,
+    PIPS_DATABASE_PATH,
+    DEFAULT_CONFIG_WORDLE,
+    DEFAULT_CONFIG_PIPS,
     WordleConfig,
+    PipsConfig,
     get_database_path,
     load_config,
     save_config,
 )
 
 # For backward compatibility
-DATABASE = str(get_database_path())
+
+# DATABASE = str(get_database_path())
 
 
 # ==============================
@@ -32,13 +36,14 @@ def get_player_colors(players: List[str]) -> Dict[str, tuple]:
     }
 
 
-def plot_wordle_progress(
+def plot_progress(
     df: pl.DataFrame,
     mode: str = "score",
     colours: Optional[Dict[str, tuple]] = None,
+    game : str = "wordle",
 ):
     """
-    Plot overall Wordle progress over time.
+    Plot overall progress over time.
     mode = "score" → plot overall_score
     mode = "rank"  → plot overall_rank
     """
@@ -96,7 +101,7 @@ def plot_wordle_progress(
             for row in summary_df.to_dicts()
         ]
         ylabel = "Overall Score"
-        title = "Overall Score by Player"
+        title = "{game.capitalize()} Overall Score by Player"
     else:
         summary_df = summary_df.sort("AT_rank", descending=False)
         summary_lines = [
@@ -104,10 +109,10 @@ def plot_wordle_progress(
             for row in summary_df.to_dicts()
         ]
         ylabel = "Overall Rank"
-        title = "Overall Rank by Player"
+        title = "{game.capitalize()} Overall Rank by Player"
 
     summary_title = (
-        f"Wordle week {summary_df['week_start'].max()} - "
+        f"{game.capitalize()} Week {summary_df['week_start'].max()} - "
         f"{summary_df['week_end'].max()}"
     )
 
@@ -127,7 +132,7 @@ def plot_wordle_progress(
 
     plt.legend()
     plt.title(title)
-    plt.xlabel("Wordle Week Start")
+    plt.xlabel("Week Start")
     plt.ylabel(ylabel)
     plt.tight_layout()
     return plt

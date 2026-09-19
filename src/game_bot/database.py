@@ -5,11 +5,11 @@ from typing import Optional, Union
 
 import polars as pl
 
-from wordle_bot.config import get_database_path
-from wordle_bot.models import ScoreRecord
+from game_bot.config import get_database_path
+from game_bot.models import ScoreRecord
 
 
-class WordleRepository:
+class GameRepository:
     """Repository interface for persisting player scores and leaderboard records to SQLite."""
 
     def __init__(self, database_path: Optional[Union[str, Path]] = None) -> None:
@@ -26,7 +26,7 @@ class WordleRepository:
         self.conn = sqlite3.connect(self.database_path, check_same_thread=False)
         self.create_tables()
 
-    def __enter__(self) -> "WordleRepository":
+    def __enter__(self) -> "GameRepository":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -292,4 +292,4 @@ class WordleRepository:
 
 
 # Backward-compatible alias
-Database_wordle = WordleRepository
+Database_game = GameRepository

@@ -1,9 +1,9 @@
 from typing import Any, List, Optional, Sequence, Union
 import polars as pl
 
-from wordle_bot.calendar_utils import get_unique_week_ranges, get_wordle_week
-from wordle_bot.config import FAIL_PENALTY_SCORE
-from wordle_bot.models import ScoreRecord
+from game_bot.calendar_utils import CalendarUtils
+from game_bot.config import WORDLE_FAIL_PENALTY_SCORE, PIPS_FAIL_PENALTY_SCORE
+from game_bot.models import ScoreRecord
 
 
 # ==============================
@@ -13,15 +13,26 @@ from wordle_bot.models import ScoreRecord
 
 def clean_and_fill_scores(
     data: Union[pl.DataFrame, Sequence[Any]],
-    wordle_start: Optional[int] = None,
+    game: str,
+    game_start: Optional[int] = None,
 ) -> pl.DataFrame:
     """
+    Clean and fill scores for a given game (Wordle or Pips).
     Accept a Polars DataFrame or a sequence of score objects/tuples and return a cleaned, filled DataFrame.
     
-    1. Converts 'X' to 7 (penalty score).
-    2. Filters out any scores before wordle_start if provided.
-    3. Fills missing intermediate days with 7.
-    4. Keeps unplayed days in the latest/current Wordle as null.
+    1. Converts 'X' to penalty score.
+    2. Filters out any scores before game_start if provided.
+    3. Fills missing intermediate days with penalty score.
+    4. Keeps unplayed days in the latest/current game as null.
+
+    Wordle:
+        - score column (int)
+        - 'X' → WORDLE_FAIL_PENALTY_SCORE
+
+    Pips:
+        - time column (string "m:ss")
+        - 'X' → PIPS_FAIL_PENALTY_SCORE 
+
     """
     if isinstance(data, pl.DataFrame):
         df = data
@@ -29,86 +40,108 @@ def clean_and_fill_scores(
         # Check if list of ScoreRecord / ScoreCalculator or list of tuples
         rows = []
         for item in data:
-            if hasattr(item, "player") and hasattr(item, "wordle_num") and hasattr(item, "score"):
-                rows.append((str(item.player), int(item.wordle_num), item.score))
+            if hasattr(item, "player") and hasattr(item, "game_num") and hasattr(item, "score"):
+                rows.append((str(item.player), int(item.game_num), item.score))
             elif isinstance(item, (list, tuple)) and len(item) >= 3:
                 rows.append((str(item[0]), int(item[1]), item[2]))
             else:
                 raise ValueError(f"Unsupported score item format: {item}")
 
-        df = pl.DataFrame(rows, schema=["player", "wordle_num", "score"], orient="row")
+        df = pl.DataFrame(rows, schema=["player", "game_num", "score"], orient="row")
     else:
-        return pl.DataFrame(schema={"player": pl.String, "wordle_num": pl.Int64, "score": pl.Int64})
+        return pl.DataFrame(schema={"player": pl.String, "game_num": pl.Int64, "score": pl.Int64})
 
     if df.height == 0:
         return df
 
     # Convert 'X' to FAIL_PENALTY_SCORE and cast to Int64
-    df = df.with_columns(
-        pl.when(pl.col("score").cast(pl.String) == "X")
-        .then(FAIL_PENALTY_SCORE)
-        .otherwise(pl.col("score"))
-        .alias("score")
-        .cast(pl.Int64)
-    )
+    if game == "wordle":
+        df = df.with_columns(
+            pl.when(pl.col("score").cast(pl.String) == "X")
+            .then(WORDLE_FAIL_PENALTY_SCORE)
+            .otherwise(pl.col("score"))
+            .alias("score")
+            .cast(pl.Int64)
+        )
+    elif game == "pips":
+        df = df.with_columns(
+            pl.when(pl.col("score").cast(pl.String) == "X")
+            .then(PIPS_FAIL_PENALTY_SCORE)
+            .otherwise(pl.col("score"))
+            .alias("score")
+            .cast(pl.Int64)
+        )
 
-    if wordle_start is not None:
-        df = df.filter(pl.col("wordle_num") >= wordle_start)
+    if game_start is not None:
+        df = df.filter(pl.col("game_num") >= game_start)
         if df.height == 0:
-            return pl.DataFrame(schema={"player": pl.String, "wordle_num": pl.Int64, "score": pl.Int64})
+            return pl.DataFrame(schema={"player": pl.String, "game_num": pl.Int64, "score": pl.Int64})
 
     players = df.select(pl.col("player")).unique()
-    wordles_max = df.select(pl.col("wordle_num")).max().item()
-    if wordle_start is not None:
-        wordles_min = wordle_start
-    else:
-        wordles_min = df.select(pl.col("wordle_num")).min().item()
+    games_max = df.select(pl.col("game_num")).max().item()
 
-    if wordles_min > wordles_max:
-        return pl.DataFrame(schema={"player": pl.String, "wordle_num": pl.Int64, "score": pl.Int64})
+    if game_start is not None:
+        games_min = game_start
+    else:
+        games_min = df.select(pl.col("game_num")).min().item()
+
+    if games_min > games_max:
+        return pl.DataFrame(schema={"player": pl.String, "game_num": pl.Int64, "score": pl.Int64})
 
     # Generate full grid of all wordle numbers for all players
-    wordles_fill = pl.DataFrame({"wordle_num": list(range(wordles_min, wordles_max + 1))})
-    full_grid = players.join(wordles_fill, how="cross")
+    games_fill = pl.DataFrame({"game_num": list(range(games_min, games_max + 1))})
+    full_grid = players.join(games_fill, how="cross")
 
-    df_filled = full_grid.join(df, on=["player", "wordle_num"], how="left")
+    df_filled = full_grid.join(df, on=["player", "game_num"], how="left")
 
-    # Conditionally fill missing with 7 only for wordle_num < max
-    df_filled = df_filled.with_columns(
-        pl.when(pl.col("wordle_num") < wordles_max)
-        .then(pl.col("score").fill_null(FAIL_PENALTY_SCORE))
-        .otherwise(pl.col("score"))
-        .alias("score")
-    )
+    # Conditionally fill missing with 7 only for game_num < max
+    if game == "wordle":
+        df_filled = df_filled.with_columns(
+            pl.when(pl.col("game_num") < games_max)
+            .then(pl.col("score").fill_null(WORDLE_FAIL_PENALTY_SCORE))
+            .otherwise(pl.col("score"))
+            .alias("score")
+        )
+    elif game == "pips":
+        df_filled = df_filled.with_columns(
+            pl.when(pl.col("game_num") < games_max)
+            .then(pl.col("score").fill_null(PIPS_FAIL_PENALTY_SCORE))
+            .otherwise(pl.col("score"))
+            .alias("score")
+        )
+    else: 
+        raise ValueError(f"Unsupported game type: {game}")
 
-    return df_filled.sort(["wordle_num", "player"])
+    return df_filled.sort(["game_num", "player"])
 
 
 def compute_weekly_scores(
     df: pl.DataFrame,
-    wordle_start: Optional[int] = None,
+    game: str,
+    game_start: Optional[int] = None,
 ) -> List[pl.DataFrame]:
     """
-    Calculate the total score for each player for all complete 7-day Wordle weeks.
+    Calculate the total score for each player for all complete 7-day {game} weeks.
     Incomplete trailing weeks are omitted.
-    If wordle_start is provided, only scores and weeks starting from wordle_start are considered.
+    If game_start is provided, only scores and weeks starting from game_start are considered.
     """
     if df is None or df.height == 0:
         return []
 
-    if wordle_start is not None:
-        df = df.filter(pl.col("wordle_num") >= wordle_start)
+    if game_start is not None:
+        df = df.filter(pl.col("game_num") >= game_start)
         if df.height == 0:
             return []
-
-    week_ranges = get_unique_week_ranges(df["wordle_num"].unique().to_list())
+        
+    get_unique_week_ranges = CalendarUtils(game).get_unique_week_ranges
+    week_ranges = get_unique_week_ranges(df["game_num"].unique().to_list())
     weekly_dfs = []
 
     for week_start, week_end in week_ranges:
-        if wordle_start is not None and week_start < wordle_start:
+        if game_start is not None and week_start < game_start:
             continue
         df_week = df.filter(
-            (pl.col("wordle_num") >= week_start) & (pl.col("wordle_num") <= week_end)
+            (pl.col("game_num") >= week_start) & (pl.col("game_num") <= week_end)
         )
         if df_week.height > 0:
             weekly_dfs.append((df_week, week_start, week_end))
@@ -116,9 +149,9 @@ def compute_weekly_scores(
     if not weekly_dfs:
         return []
 
-    # Check if last week is complete (has wordle_num equal to week_end)
+    # Check if last week is complete (has game_num equal to week_end)
     last_df, _, last_week_end = weekly_dfs[-1]
-    if last_df["wordle_num"].max() < last_week_end:
+    if last_df["game_num"].max() < last_week_end:
         weekly_dfs = weekly_dfs[:-1]
 
     weekly_scores = []
@@ -139,12 +172,13 @@ def compute_weekly_scores(
 
 def rank_weekly_scores(
     df: pl.DataFrame,
-    wordle_start: Optional[int] = None,
+    game: str,
+    game_start: Optional[int] = None,
 ) -> List[pl.DataFrame]:
     """
     Compute competition ranking for each complete week with mean ranks assigned to ties.
     """
-    weekly_scores = compute_weekly_scores(df, wordle_start=wordle_start)
+    weekly_scores = compute_weekly_scores(df, game=game, game_start=game_start)
     ranked_weeks = []
 
     for weekly_score in weekly_scores:
@@ -170,6 +204,7 @@ def rank_weekly_scores(
 
 def calculate_running_leaderboard(
     weekly_scores: List[pl.DataFrame],
+    game: str,
     interest: str = "overall_rank",
     leaderboard: Optional[pl.DataFrame] = None,
 ) -> List[pl.DataFrame]:
@@ -239,38 +274,48 @@ def calculate_running_leaderboard(
 class ScoreCalculator:
     """Class representing an individual score, with backward-compatible static methods."""
 
-    def __init__(self, player: str, wordle_num: int, score: Any) -> None:
+    def __init__(self, player: str, game_num: int, score: Any, game: str) -> None:
         self.player = str(player)
-        self.wordle_num = int(wordle_num)
+        self.game_num = int(game_num)
         self.score = score
+        self.game = str(game)
 
     def __repr__(self) -> str:
-        return f"(player={self.player}, wordle={self.wordle_num}, score={self.score})\n"
+        return f"(player={self.player}, game={self.game_num}, score={self.score}), game={self.game}\n"
 
     def numeric_score(self) -> int:
-        if self.score == "X":
-            return FAIL_PENALTY_SCORE
+        if self.game == "wordle" and self.score == "X":
+            return WORDLE_FAIL_PENALTY_SCORE
+        elif self.game == "pips" and self.score == "X":
+            return PIPS_FAIL_PENALTY_SCORE
         return int(self.score)
 
     @staticmethod
-    def score_cleaner(data, wordle_start: Optional[int] = None) -> pl.DataFrame:
-        return clean_and_fill_scores(data, wordle_start=wordle_start)
+    def score_cleaner(data, game_start: Optional[int] = None) -> pl.DataFrame:
+        return clean_and_fill_scores(data, game_start=game_start)
 
     @staticmethod
-    def wordle_week(wordle_num: int):
-        return get_wordle_week(wordle_num)
+    def game_week(game, game_num: int):
+        get_week_range = CalendarUtils(game).get_week_range
+        return get_week_range(game, game_num)
 
     @staticmethod
     def store_week_ranges(df: pl.DataFrame):
-        return get_unique_week_ranges(df["wordle_num"].unique().to_list())
+        get_unique_week_ranges = CalendarUtils(df["game"].unique()[0]).get_unique_week_ranges
+        return get_unique_week_ranges(df["game_num"].unique().to_list())
+
+    # def compute_weekly_score(self, df: pl.DataFrame, game_start: Optional[int] = None) -> List[pl.DataFrame]:
+    #     return compute_weekly_scores(df, game_start=game_start, game=self.game)
 
     @staticmethod
-    def compute_weekly_score(df: pl.DataFrame, wordle_start: Optional[int] = None) -> List[pl.DataFrame]:
-        return compute_weekly_scores(df, wordle_start=wordle_start)
+    def compute_weekly_score(df, game, game_start=None):
+        return compute_weekly_scores(df, game_start=game_start, game=game)
+
+    
 
     @staticmethod
-    def week_ranking(df: pl.DataFrame, wordle_start: Optional[int] = None) -> List[pl.DataFrame]:
-        return rank_weekly_scores(df, wordle_start=wordle_start)
+    def week_ranking(df: pl.DataFrame, game_start: Optional[int] = None) -> List[pl.DataFrame]:
+        return rank_weekly_scores(df, game_start=game_start)
 
     @staticmethod
     def running_ranking(
@@ -284,9 +329,9 @@ class ScoreCalculator:
         return calculate_running_leaderboard(weekly_scores, interest=interest, leaderboard=leaderboard)
 
     @staticmethod
-    def ranking(df: pl.DataFrame, wordle_start: Optional[int] = None) -> pl.DataFrame:
-        if wordle_start is not None and df.height > 0:
-            df = df.filter(pl.col("wordle_num") >= wordle_start)
+    def ranking(df: pl.DataFrame, game_start: Optional[int] = None) -> pl.DataFrame:
+        if game_start is not None and df.height > 0:
+            df = df.filter(pl.col("game_num") >= game_start)
         return (
             df.group_by("player")
             .agg(pl.sum("score").alias("total_score"))

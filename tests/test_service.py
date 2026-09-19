@@ -2,19 +2,19 @@ from unittest.mock import MagicMock
 import polars as pl
 import pytest
 
-from wordle_bot.config import WordleConfig
-from wordle_bot.database import WordleRepository
-from wordle_bot.service import WordleBotService
+from game_bot.config import WordleConfig
+from game_bot.database import GameRepository
+from game_bot.service import GameBotService
 
 
 @pytest.fixture
 def mock_repo(tmp_path):
     db_file = tmp_path / "test_service.db"
-    return WordleRepository(str(db_file))
+    return GameRepository(str(db_file))
 
 
 def test_service_scrape_and_sync_scores(mock_repo):
-    service = WordleBotService(repository=mock_repo)
+    service = GameBotService(repository=mock_repo)
 
     mock_client = MagicMock()
     # Mock return from scroll_until_cutoff_and_store
@@ -34,7 +34,7 @@ def test_service_scrape_and_sync_scores(mock_repo):
 
 def test_service_run_workflow(mock_repo):
     config = WordleConfig(group_name="Test Group", group_name_send="Test Send")
-    service = WordleBotService(repository=mock_repo, config=config)
+    service = GameBotService(repository=mock_repo, config=config)
 
     # Pre-populate 1 full complete week
     mock_client = MagicMock()
@@ -57,7 +57,7 @@ def test_service_run_workflow(mock_repo):
 
 def test_service_with_wordle_start(mock_repo):
     config = WordleConfig(group_name="Test Group", group_name_send="Test Send", wordle_start=1877)
-    service = WordleBotService(repository=mock_repo, config=config)
+    service = GameBotService(repository=mock_repo, config=config)
 
     # Scrape 2 full weeks: 1870-1876 and 1877-1883
     all_scores = []

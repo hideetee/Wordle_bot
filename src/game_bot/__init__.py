@@ -1,60 +1,71 @@
-"""Wordle Bot - Automated tracking, scoring, and leaderboard management for Wordle Golf."""
+"""GameBot - Automated tracking, scoring, and leaderboard management for Wordle and Pips."""
 
-from wordle_bot.calendar_utils import get_unique_week_ranges, get_wordle_week, wordle_week
-from wordle_bot.config import (
+from game_bot.calendar_utils import CalendarUtils
+from game_bot.config import (
     DAYS_PER_WEEK,
-    FAIL_PENALTY_SCORE,
+    WORDLE_FAIL_PENALTY_SCORE,
+    PIPS_FAIL_PENALTY_SCORE,
+    PIPS_ANCHOR_NUMBER,
+    PIPS_ANCHOR_WEEKDAY,
     SIMILARITY_THRESHOLD,
     WORDLE_ANCHOR_NUMBER,
     WORDLE_ANCHOR_WEEKDAY,
     WordleConfig,
+    PipsConfig,
     load_config,
     save_config,
 )
-from wordle_bot.database import Database_wordle, WordleRepository
-from wordle_bot.formatter import (
+from game_bot.database import Database_game, GameRepository
+from game_bot.formatter import (
     format_leaderboard_announcement,
     format_overall_score_table,
     format_weekly_score_table,
 )
-from wordle_bot.models import (
+from game_bot.models import (
     LeaderboardEntry,
     ScoreRecord,
     WeeklyScore,
     WeekRange,
 )
-from wordle_bot.parser import (
+from game_bot.parser import (
     WordleParser,
+    PipsParser,
     parse_wordle_scores,
     parser_wordle_score,
+    parse_pips_scores,
+    parser_pips_score,
 )
-from wordle_bot.scorer import (
+from game_bot.scorer import (
     ScoreCalculator,
     calculate_running_leaderboard,
     clean_and_fill_scores,
     compute_weekly_scores,
     rank_weekly_scores,
 )
-from wordle_bot.service import WordleBotService
-from wordle_bot.whatsapp import WhatsAppClient
+from game_bot.service import GameBotService
+from game_bot.whatsapp import WhatsAppClient
 
 __all__ = [
-    "WordleRepository",
-    "Database_wordle",
+    "GameRepository",
+    "Database_game",
     "WordleParser",
+    "PipsParser",
     "parse_wordle_scores",
     "parser_wordle_score",
+    "parse_pips_scores",
+    "parser_pips_score",
+    "game_week",
     "ScoreCalculator",
     "clean_and_fill_scores",
     "compute_weekly_scores",
     "rank_weekly_scores",
     "calculate_running_leaderboard",
-    "get_wordle_week",
-    "get_unique_week_ranges",
-    "wordle_week",
+    "CalendarUtils",
+    "game_week",
     "WhatsAppClient",
-    "WordleBotService",
+    "GameBotService",
     "WordleConfig",
+    "PipsConfig",
     "load_config",
     "save_config",
     "format_weekly_score_table",
@@ -64,9 +75,12 @@ __all__ = [
     "WeekRange",
     "WeeklyScore",
     "LeaderboardEntry",
-    "FAIL_PENALTY_SCORE",
+    "WORDLE_FAIL_PENALTY_SCORE",
     "WORDLE_ANCHOR_NUMBER",
     "WORDLE_ANCHOR_WEEKDAY",
+    "PIPS_ANCHOR_NUMBER",
+    "PIPS_FAIL_PENALTY_SCORE",
+    "PIPS_ANCHOR_WEEKDAY",
     "DAYS_PER_WEEK",
     "SIMILARITY_THRESHOLD",
 ]

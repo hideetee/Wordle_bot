@@ -4,15 +4,15 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class ScoreRecord:
-    """Represents a single player's score for a specific Wordle puzzle."""
+    """Represents a single player's score for a specific game puzzle."""
     player: str
-    wordle_num: int
+    game_num: int
     score: Optional[int]  # 1-6 for success, 7 for X/penalty, None for unplayed current day
 
 
 @dataclass(frozen=True)
 class WeekRange:
-    """Represents the inclusive start and end Wordle numbers for a 7-day competition week."""
+    """Represents the inclusive start and end numbers for a 7-day competition week."""
     start: int
     end: int
 

@@ -1,4 +1,4 @@
-from wordle_bot.scorer import ScoreCalculator as SC
+from game_bot.scorer import ScoreCalculator as SC
 import polars as pl
 import polars.testing as pt
 

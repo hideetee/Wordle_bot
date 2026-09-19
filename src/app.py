@@ -1,10 +1,10 @@
 import streamlit as st
 
-from wordle_bot.config import WordleConfig, load_config, save_config
-from wordle_bot.database import WordleRepository
-from wordle_bot.main import get_current_leaderboard, main
-from wordle_bot.service import WordleBotService
-from wordle_bot.utils import get_player_colors, plot_wordle_progress
+from game_bot.config import WordleConfig, load_config, save_config
+from game_bot.database import GameRepository
+from game_bot.main import get_current_leaderboard, main
+from game_bot.service import GameBotService
+from game_bot.utils import get_player_colors, plot_progress
 
 st.set_page_config(page_title="Wordle Bot Dashboard", page_icon="🏆", layout="wide")
 st.title("🏆 Wordle Bot Dashboard")
@@ -83,8 +83,8 @@ if st.session_state.last_leaderboard is not None and st.session_state.last_leade
         st.subheader("📈 Leaderboard Progress Trends")
         col1, col2 = st.columns(2)
         with col1:
-            st.pyplot(plot_wordle_progress(st.session_state.full_leaderboard, mode="score", colours=player_colours))
+            st.pyplot(plot_progress(st.session_state.full_leaderboard, mode="score", colours=player_colours))
         with col2:
-            st.pyplot(plot_wordle_progress(st.session_state.full_leaderboard, mode="rank", colours=player_colours))
+            st.pyplot(plot_progress(st.session_state.full_leaderboard, mode="rank", colours=player_colours))
 else:
     st.info("No leaderboard data recorded yet. Click 'Run Bot & Sync Scores' to load initial data.")

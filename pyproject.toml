@@ -1,5 +1,5 @@
 [project]
-name = "wordle_bot"
+name = "game_bot"
 version = "0.0.1"
 authors = [
   { name = "Haidee Tang", email = "Haidee.Tang95@gmail.com" },

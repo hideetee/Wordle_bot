@@ -1,11 +1,11 @@
 import polars as pl
 import pytest
-from wordle_bot.formatter import (
+from game_bot.formatter import (
     format_leaderboard_announcement,
     format_overall_score_table,
     format_weekly_score_table,
 )
-from wordle_bot.whatsapp import WhatsAppClient
+from game_bot.whatsapp import WhatsAppClient
 
 
 def test_format_weekly_score_table():

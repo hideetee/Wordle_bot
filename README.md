@@ -1,4 +1,4 @@
-# Wordle Bot 🏆
+# Game Bot 🏆
 
 A Python application and automated bot designed to track, score, and manage **Wordle Golf** competitions within WhatsApp group chats. 
 
@@ -27,11 +27,11 @@ The bot uses **Playwright** to scrape Wordle results shared in WhatsApp, parses 
 ## 📁 Repository Structure
 
 ```text
-Wordle_bot/
+game_bot/
 ├── pyproject.toml              # Package configuration & metadata
 ├── src/
 │   ├── app.py                  # Streamlit Web UI Dashboard
-│   └── wordle_bot/
+│   └── game_bot/
 │       ├── __init__.py         # Package public exports
 │       ├── calendar_utils.py   # Wordle week calculation & date-anchor logic
 │       ├── config.json         # WhatsApp group name configuration
@@ -80,7 +80,7 @@ Install Playwright Chromium browser binaries:
 playwright install chromium
 ```
 
-Alternatively, install `wordle_bot` in editable mode:
+Alternatively, install `game_bot` in editable mode:
 
 ```bash
 pip install -e .
@@ -90,7 +90,7 @@ pip install -e .
 
 ## ⚙️ Configuration
 
-Update `src/wordle_bot/config.json` with the exact names of your WhatsApp target group:
+Update `src/game_bot/config.json` with the exact names of your WhatsApp target group:
 
 ```json
 {
@@ -126,7 +126,7 @@ From the dashboard you can:
 To run the bot directly:
 
 ```bash
-python -m wordle_bot.main
+python -m game_bot.main
 ```
 
 > **Note**: On the first run, Playwright will open a Chromium window loading WhatsApp Web. You will need to scan the QR code with your phone to authenticate your WhatsApp session.

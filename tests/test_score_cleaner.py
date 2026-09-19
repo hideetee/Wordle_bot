@@ -1,5 +1,5 @@
 import pytest
-from wordle_bot.scorer import ScoreCalculator as SC
+from game_bot.scorer import ScoreCalculator as SC
 import polars as pl
 
 def test_score_cleaner_converts_X_to_7():

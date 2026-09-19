@@ -2,8 +2,8 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
-from wordle_bot.models import ScoreRecord
-from wordle_bot.scorer import (
+from game_bot.models import ScoreRecord
+from game_bot.scorer import (
     calculate_running_leaderboard,
     clean_and_fill_scores,
     compute_weekly_scores,

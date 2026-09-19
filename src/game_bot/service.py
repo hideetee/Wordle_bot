@@ -1,40 +1,111 @@
 import logging
 from typing import Any, Dict, Optional, Tuple
 import polars as pl
+from abc import ABC, abstractmethod
 
-from wordle_bot.calendar_utils import get_unique_week_ranges
-from wordle_bot.config import WordleConfig, load_config
-from wordle_bot.database import WordleRepository
-from wordle_bot.formatter import format_leaderboard_announcement
-from wordle_bot.models import ScoreRecord
-from wordle_bot.scorer import (
+# from game_bot.calendar_utils import CalendarUtils
+from game_bot.config import WordleConfig, load_config, PipsConfig
+from game_bot.database import GameRepository
+from game_bot.formatter import format_leaderboard_announcement
+from game_bot.models import ScoreRecord
+from game_bot.scorer import (
     calculate_running_leaderboard,
     clean_and_fill_scores,
     rank_weekly_scores,
 )
-from wordle_bot.whatsapp import WhatsAppClient
+from game_bot.whatsapp import WhatsAppClient
 
 logger = logging.getLogger(__name__)
 
+class Game(ABC):
+    """Base class for different game types."""
 
-class WordleBotService:
+    @abstractmethod
+    def clean_and_fill_scores(
+        self, 
+        df: pl.DataFrame, 
+        game_start: Optional[int] = None) -> pl.DataFrame:
+        """Clean and fill scores for the specific game."""
+        pass
+
+    @abstractmethod
+    def rank_weekly_scores(
+        self,
+        df: pl.DataFrame,
+        wordle_start: Optional[int] = None
+    ) -> list[pl.DataFrame]:
+        """Rank weekly scores for Wordle."""
+        pass
+
+    @abstractmethod
+    def format_leaderboard_announcement(
+        self,
+        leaderboard_df: pl.DataFrame
+    ) -> str:
+        """Format the leaderboard announcement message."""
+        pass
+
+class WordleGame(Game):
+    """Implementation of Game for Wordle."""
+
+    def clean_and_fill_scores(
+        self, 
+        df: pl.DataFrame, 
+        wordle_start: Optional[int] = None
+    ) -> pl.DataFrame:
+        return clean_and_fill_scores(df, wordle_start=wordle_start)
+
+    def rank_weekly_scores(
+        self,
+        df: pl.DataFrame,
+        wordle_start: Optional[int] = None
+    ) -> list[pl.DataFrame]:
+        return rank_weekly_scores(df, wordle_start=wordle_start)
+
+    def format_leaderboard_announcement(
+        self,
+        leaderboard_df: pl.DataFrame
+    ) -> str:
+        return format_leaderboard_announcement(leaderboard_df)
+
+class PipsGame(Game):
+    """Implementation of Game for Pips."""
+
+    def clean_and_fill_scores(
+        self, 
+        df: pl.DataFrame, 
+        pips_start: Optional[int] = None
+    ) -> pl.DataFrame:
+        return pips_clean_and_fill_scores(df, pips_start=pips_start)
+
+    def rank_weekly_scores(
+        self,
+        df: pl.DataFrame,
+        pips_start: Optional[int] = None
+    ) -> list[pl.DataFrame]:
+        return rank_weekly_scores(df, pips_start=pips_start)
+
+    def format_leaderboard_announcement(
+        self,
+        leaderboard_df: pl.DataFrame
+    ) -> str:
+        return format_leaderboard_announcement(leaderboard_df)
+
+
+
+class GameBotService:
     """Orchestrates Wordle score syncing, ranking calculations, persistence, and announcements."""
 
     def __init__(
         self,
-        repository: Optional[WordleRepository] = None,
-        config: Optional[WordleConfig] = None,
-        wordle_start: Optional[int] = None,
+        game: Game,
+        repository: Optional[GameRepository] = None,
+        config: WordleConfig | PipsConfig | None = None,
     ) -> None:
-        self.repository = repository or WordleRepository()
-        if config is None:
-            config_dict = load_config()
-            self.config = WordleConfig.from_dict(config_dict)
-        else:
-            self.config = config
+        self.game = game
+        self.repository = repository or GameRepository()
+        self.config = config
 
-        if wordle_start is not None:
-            self.config.wordle_start = wordle_start
 
     def scrape_and_sync_scores(
         self,
@@ -61,7 +132,11 @@ class WordleBotService:
             raw_df = pl.DataFrame(
                 raw_messages, schema=["player", "wordle_num", "score"], orient="row"
             )
-            cleaned_scores = clean_and_fill_scores(raw_df, wordle_start=effective_start)
+            if game == "wordle":
+                cleaned_scores = clean_and_fill_scores(raw_df, wordle_start=effective_start)
+            elif game == "pips":
+                cleaned_scores = pips_clean_and_fill_scores(raw_df, wordle_start=effective_start)
+            # cleaned_scores = clean_and_fill_scores(raw_df, wordle_start=effective_start)
             self.repository.save_score_if_missing_or_7(cleaned_scores)
 
         return self.repository.load_scores(wordle_min=effective_start)
