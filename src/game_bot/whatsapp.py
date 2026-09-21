@@ -157,7 +157,7 @@ class WhatsAppClient:
         score = similarity(expected, actual)
         return score >= SIMILARITY_THRESHOLD and fail_count == 0
 
-    def send_message(self, message: str, max_retries: int = 5, timeout: float = 10.0) -> bool:
+    def send_message(self, message: str, max_retries: int = 1, timeout: float = 10.0) -> bool:
         """Send a text message in the currently open chat with automatic retries."""
         input_box = self.page.locator("[data-testid='conversation-compose-box-input']")
         time.sleep(1)
@@ -169,6 +169,7 @@ class WhatsAppClient:
                 input_box.fill("")
                 input_box.fill(message)
                 input_box.press("Enter")
+                time.sleep(1)
             else:
                 last_message = self.page.locator("[data-testid='msg-container']").last
                 fail_button = last_message.locator("[data-testid='fail-container']")
@@ -176,6 +177,7 @@ class WhatsAppClient:
                     return True
                 if fail_button.count() > 0:
                     fail_button.click()
+                    time.sleep(1)
 
             deadline = time.time() + timeout
             while time.time() < deadline:
@@ -186,7 +188,7 @@ class WhatsAppClient:
                 if last_message.locator("[data-testid='fail-container']").count() > 0:
                     break
 
-                time.sleep(0.2)
+                time.sleep(1)
 
         return False
 
