@@ -32,10 +32,21 @@ class WordleParser:
     #     return None
 
     @staticmethod
+    def shortest_unique_prefix(name: str, others: list[str]) -> str:
+        for length in range(1, len(name) + 1):
+            prefix = name[:length]
+            # Check if prefix is unique among all other senders
+            if sum(o.startswith(prefix) for o in others) == 0:
+                return prefix
+        return name  # fallback: full name
+    
+    @staticmethod
     def find_sender(lines: Sequence[str], index: int) -> Optional[str]:
         """
         Walk backwards from the given index to locate the sender name from WhatsApp message headers.
+        Returns the shortest unique prefix of the sender's name.
         """
+        sender = None
         for i in range(index, -1, -1):
             line = lines[i]
             if WHATSAPP_HEADER_PATTERN.match(line):
@@ -43,8 +54,25 @@ class WordleParser:
                 parts = line.split("-", 1)
                 if len(parts) > 1:
                     sender_part = parts[1].split(":", 1)[0].strip()
-                    return sender_part
-        return None
+                    # return first letter of sender name
+                    sender = sender_part
+                    break
+
+        if sender is None:
+            return None
+
+        all_senders = []
+        for line in lines:
+            if WHATSAPP_HEADER_PATTERN.match(line):
+                parts = line.split("-", 1)
+                if len(parts) > 1:
+                    s = parts[1].split(":", 1)[0].strip()
+                    all_senders.append(s)
+
+
+        others = [s for s in all_senders if s != sender]
+        return WordleParser.shortest_unique_prefix(sender, others)
+
 
     @classmethod
     def parse_messages(cls, lines: Sequence[str]) -> List[Tuple[str, int, str]]:
@@ -111,7 +139,7 @@ class PipsParser:
                 parts = line.split("-", 1)
                 if len(parts) > 1:
                     sender_part = parts[1].split(":", 1)[0].strip()
-                    return sender_part
+                    return sender_part[0]
         return None
 
     @classmethod
@@ -150,3 +178,19 @@ class PipsParser:
 # Module-level convenience functions
 parse_pips_scores = PipsParser.parse_messages
 parser_pips_score = PipsParser.parser_pips_score
+
+
+def parse_messages(lines: Sequence[str], game: str = "wordle") -> Any:
+    """
+    Parse a list of WhatsApp message lines for a given game ('wordle' or 'pips').
+    """
+    if game == "wordle":
+        return WordleParser.parse_messages(lines)
+    elif game == "pips":
+        return PipsParser.parse_messages(lines)
+    else:
+        raise ValueError(f"Unsupported game type: {game}")
+
+
+parse_scores = parse_messages
+parser_score = parse_messages
