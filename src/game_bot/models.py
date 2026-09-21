@@ -1,13 +1,21 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
 class ScoreRecord:
     """Represents a single player's score for a specific game puzzle."""
     player: str
-    game_num: int
-    score: Optional[int]  # 1-6 for success, 7 for X/penalty, None for unplayed current day
+    game_num: Optional[int] = None
+    score: Optional[Any] = None  # 1-6 for success, 7 for X/penalty, None for unplayed current day
+    wordle_num: Optional[int] = None
+
+    def __post_init__(self):
+        num = self.game_num if self.game_num is not None else self.wordle_num
+        if num is None:
+            raise ValueError("Either game_num or wordle_num must be provided")
+        object.__setattr__(self, "game_num", int(num))
+        object.__setattr__(self, "wordle_num", int(num))
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@ import json
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # ==============================
 # DOMAIN CONSTANTS
@@ -33,7 +33,7 @@ PIPS_DATABASE_PATH = BASE_DIR / "scores_pips.db"
 class WordleConfig:
     group_name: str = "Wordle Golf"
     group_name_send: str = "Haidee UK (You)"
-    wordle_start: Optional[int] = None,
+    wordle_start: Optional[int] = None
     game: str = "wordle"
 
     @classmethod
@@ -125,7 +125,7 @@ def get_config_path(game:str) -> Path:
         raise ValueError("Invalid game type. Must be 'wordle' or 'pips'.")
 
 
-def get_database_path(game: str) -> Path:
+def get_database_path(game: str = "wordle") -> Path:
     """Return the resolved path to scores.db."""
     ensure_base_dir()
     if game == "wordle":
@@ -137,7 +137,7 @@ def get_database_path(game: str) -> Path:
 
 
 
-def load_config(game:str) -> Dict[str, str]:
+def load_config(game: str = "wordle") -> Dict[str, Any]:
     """
     Load configuration from the user's config.json.
     Falls back to default configuration if missing or invalid.

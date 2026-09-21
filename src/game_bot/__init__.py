@@ -34,6 +34,9 @@ from game_bot.parser import (
     parser_wordle_score,
     parse_pips_scores,
     parser_pips_score,
+    parse_messages,
+    parse_scores,
+    parser_score,
 )
 from game_bot.scorer import (
     ScoreCalculator,
@@ -42,8 +45,10 @@ from game_bot.scorer import (
     compute_weekly_scores,
     rank_weekly_scores,
 )
-from game_bot.service import GameBotService
+from game_bot.service import Game, GameBotService, PipsGame, WordleGame
 from game_bot.whatsapp import WhatsAppClient
+
+game_week = ScoreCalculator.game_week
 
 __all__ = [
     "GameRepository",
@@ -54,7 +59,9 @@ __all__ = [
     "parser_wordle_score",
     "parse_pips_scores",
     "parser_pips_score",
-    "game_week",
+    "parse_messages",
+    "parse_scores",
+    "parser_score",
     "ScoreCalculator",
     "clean_and_fill_scores",
     "compute_weekly_scores",
@@ -63,6 +70,9 @@ __all__ = [
     "CalendarUtils",
     "game_week",
     "WhatsAppClient",
+    "Game",
+    "WordleGame",
+    "PipsGame",
     "GameBotService",
     "WordleConfig",
     "PipsConfig",
