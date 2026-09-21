@@ -23,10 +23,10 @@ def test_clean_and_fill_scores_with_dataclasses():
     # Intermediate wordle 101 should be filled with 7 for both players
     assert cleaned.height == 6
 
-    alice_101 = cleaned.filter((pl.col("player") == "Alice") & (pl.col("wordle_num") == 101))
+    alice_101 = cleaned.filter((pl.col("player") == "A") & (pl.col("wordle_num") == 101))
     assert alice_101["score"][0] == 7
 
-    bob_100 = cleaned.filter((pl.col("player") == "Bob") & (pl.col("wordle_num") == 100))
+    bob_100 = cleaned.filter((pl.col("player") == "B") & (pl.col("wordle_num") == 100))
     assert bob_100["score"][0] == 7
 
 

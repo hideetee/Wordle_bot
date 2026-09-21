@@ -19,7 +19,7 @@ def test_score_cleaner_converts_X_to_7():
 
     # Assert
     expected_df = pl.DataFrame({
-        "player": ["Alice", "Bob", "Charlie"],
+        "player": ["A", "B", "C"],
         "wordle_num": [1, 1, 1],
         "score": [7, 3, 7]
     })
@@ -39,7 +39,7 @@ def test_score_cleaner_fills_incompletes():
 
     # Assert
     expected_df = pl.DataFrame({
-        "player": ["Alice", "Alice", "Alice"],
+        "player": ["A", "A", "A"],
         "wordle_num": [1, 2, 3],
         "score": [2, 7, 2]
     })
@@ -67,7 +67,7 @@ def test_score_cleaner_fills_incompletes_recents_unfilled():
 
     # Assert
     expected_df = pl.DataFrame({
-        "player": ["Alice", "Bob", "Alice", "Bob", "Alice", "Bob"],
+        "player": ["A", "B", "A", "B", "A", "B"],
         "wordle_num": [1, 1, 2, 2, 3, 3],
         "score": [2, 3, 7, 7, 2, None]
     }).sort(["wordle_num", "player"])
@@ -89,7 +89,7 @@ def test_score_cleaner_with_wordle_start_limits_and_fills():
     df = SC.score_cleaner(sc_list, wordle_start=101)
 
     expected_df = pl.DataFrame({
-        "player": ["Alice", "Bob", "Alice", "Bob", "Alice", "Bob"],
+        "player": ["A", "B", "A", "B", "A", "B"],
         "wordle_num": [101, 101, 102, 102, 103, 103],
         "score": [2, 7, 7, 7, None, 5]
     }).sort(["wordle_num", "player"])

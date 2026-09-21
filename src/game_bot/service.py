@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 import polars as pl
 from abc import ABC, abstractmethod
 
@@ -19,12 +19,15 @@ logger = logging.getLogger(__name__)
 
 class Game(ABC):
     """Base class for different game types."""
+    name: str
 
     @abstractmethod
     def clean_and_fill_scores(
         self, 
         df: pl.DataFrame, 
-        game_start: Optional[int] = None) -> pl.DataFrame:
+        game_start: Optional[int] = None,
+        **kwargs: Any,
+    ) -> pl.DataFrame:
         """Clean and fill scores for the specific game."""
         pass
 
@@ -32,90 +35,143 @@ class Game(ABC):
     def rank_weekly_scores(
         self,
         df: pl.DataFrame,
-        wordle_start: Optional[int] = None
+        game_start: Optional[int] = None,
+        **kwargs: Any,
     ) -> list[pl.DataFrame]:
-        """Rank weekly scores for Wordle."""
+        """Rank weekly scores for the game."""
         pass
 
     @abstractmethod
     def format_leaderboard_announcement(
         self,
-        leaderboard_df: pl.DataFrame
+        leaderboard_df: pl.DataFrame,
     ) -> str:
         """Format the leaderboard announcement message."""
         pass
 
+
 class WordleGame(Game):
     """Implementation of Game for Wordle."""
+    name: str = "wordle"
 
     def clean_and_fill_scores(
         self, 
         df: pl.DataFrame, 
-        wordle_start: Optional[int] = None
+        game_start: Optional[int] = None,
+        wordle_start: Optional[int] = None,
+        **kwargs: Any,
     ) -> pl.DataFrame:
-        return clean_and_fill_scores(df, wordle_start=wordle_start)
+        effective_start = game_start if game_start is not None else wordle_start
+        return clean_and_fill_scores(df, game="wordle", game_start=effective_start)
 
     def rank_weekly_scores(
         self,
         df: pl.DataFrame,
-        wordle_start: Optional[int] = None
+        game_start: Optional[int] = None,
+        wordle_start: Optional[int] = None,
+        **kwargs: Any,
     ) -> list[pl.DataFrame]:
-        return rank_weekly_scores(df, wordle_start=wordle_start)
+        effective_start = game_start if game_start is not None else wordle_start
+        return rank_weekly_scores(df, game="wordle", game_start=effective_start)
 
     def format_leaderboard_announcement(
         self,
-        leaderboard_df: pl.DataFrame
+        leaderboard_df: pl.DataFrame,
     ) -> str:
         return format_leaderboard_announcement(leaderboard_df)
 
+
 class PipsGame(Game):
     """Implementation of Game for Pips."""
+    name: str = "pips"
 
     def clean_and_fill_scores(
         self, 
         df: pl.DataFrame, 
-        pips_start: Optional[int] = None
+        game_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
+        **kwargs: Any,
     ) -> pl.DataFrame:
-        return pips_clean_and_fill_scores(df, pips_start=pips_start)
+        effective_start = game_start if game_start is not None else pips_start
+        return clean_and_fill_scores(df, game="pips", game_start=effective_start)
 
     def rank_weekly_scores(
         self,
         df: pl.DataFrame,
-        pips_start: Optional[int] = None
+        game_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
+        **kwargs: Any,
     ) -> list[pl.DataFrame]:
-        return rank_weekly_scores(df, pips_start=pips_start)
+        effective_start = game_start if game_start is not None else pips_start
+        return rank_weekly_scores(df, game="pips", game_start=effective_start)
 
     def format_leaderboard_announcement(
         self,
-        leaderboard_df: pl.DataFrame
+        leaderboard_df: pl.DataFrame,
     ) -> str:
         return format_leaderboard_announcement(leaderboard_df)
 
 
 
 class GameBotService:
-    """Orchestrates Wordle score syncing, ranking calculations, persistence, and announcements."""
+    """Orchestrates game score syncing, ranking calculations, persistence, and announcements."""
 
     def __init__(
         self,
-        game: Game,
+        game: Optional[Union[Game, str]] = None,
         repository: Optional[GameRepository] = None,
         config: WordleConfig | PipsConfig | None = None,
     ) -> None:
-        self.game = game
-        self.repository = repository or GameRepository()
-        self.config = config
+        if game is None:
+            if config is not None and hasattr(config, "game") and config.game == "pips":
+                self.game: Game = PipsGame()
+            else:
+                self.game = WordleGame()
+        elif isinstance(game, str):
+            if game == "pips":
+                self.game = PipsGame()
+            elif game == "wordle":
+                self.game = WordleGame()
+            else:
+                raise ValueError(f"Unsupported game type: {game}")
+        else:
+            self.game = game
 
+        self.repository = repository or GameRepository(game=getattr(self.game, "name", "wordle"))
+        self.config = config or (WordleConfig() if getattr(self.game, "name", "wordle") == "wordle" else PipsConfig())
+
+    def _get_effective_start(
+        self,
+        game_start: Optional[int] = None,
+        wordle_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
+    ) -> Optional[int]:
+        if game_start is not None:
+            return game_start
+        if wordle_start is not None:
+            return wordle_start
+        if pips_start is not None:
+            return pips_start
+        if self.config is not None:
+            if hasattr(self.config, "wordle_start") and self.config.wordle_start is not None:
+                return self.config.wordle_start
+            if hasattr(self.config, "pips_start") and self.config.pips_start is not None:
+                return self.config.pips_start
+        return None
 
     def scrape_and_sync_scores(
         self,
         client: WhatsAppClient,
         wordle_start: Optional[int] = None,
+        game_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
     ) -> pl.DataFrame:
         """
         Scrape new messages from WhatsApp, clean/fill penalty scores, and persist to database.
         """
-        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
+        effective_start = self._get_effective_start(
+            game_start=game_start, wordle_start=wordle_start, pips_start=pips_start
+        )
         latest_wordle = self.repository.get_latest_wordle_num()
         cutoff = (latest_wordle - 1) if latest_wordle is not None else None
 
@@ -123,20 +179,17 @@ class GameBotService:
             if cutoff is None or effective_start > cutoff:
                 cutoff = effective_start - 1
 
-        logger.info(f"Latest in DB: {latest_wordle}, cutoff: {cutoff}, wordle_start: {effective_start}")
+        logger.info(f"Latest in DB: {latest_wordle}, cutoff: {cutoff}, start: {effective_start}")
 
         raw_messages = client.scroll_until_cutoff_and_store(cutoff)
         logger.info(f"Scraped {len(raw_messages)} messages from WhatsApp")
 
         if raw_messages:
+            num_col = f"{self.game.name}_num" if hasattr(self.game, "name") else "wordle_num"
             raw_df = pl.DataFrame(
-                raw_messages, schema=["player", "wordle_num", "score"], orient="row"
+                raw_messages, schema=["player", num_col, "score"], orient="row"
             )
-            if game == "wordle":
-                cleaned_scores = clean_and_fill_scores(raw_df, wordle_start=effective_start)
-            elif game == "pips":
-                cleaned_scores = pips_clean_and_fill_scores(raw_df, wordle_start=effective_start)
-            # cleaned_scores = clean_and_fill_scores(raw_df, wordle_start=effective_start)
+            cleaned_scores = self.game.clean_and_fill_scores(raw_df, game_start=effective_start)
             self.repository.save_score_if_missing_or_7(cleaned_scores)
 
         return self.repository.load_scores(wordle_min=effective_start)
@@ -144,12 +197,16 @@ class GameBotService:
     def process_and_update_leaderboards(
         self,
         wordle_start: Optional[int] = None,
+        game_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
     ) -> pl.DataFrame:
         """
         Compute weekly rankings and cumulative standings across scores and save them.
         Returns the latest leaderboard DataFrame.
         """
-        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
+        effective_start = self._get_effective_start(
+            game_start=game_start, wordle_start=wordle_start, pips_start=pips_start
+        )
         scores_df = self.repository.load_scores(wordle_min=effective_start)
         if scores_df.height == 0:
             return self.repository.load_leaderboard(last_leaderboard=True, wordle_start=effective_start)
@@ -158,7 +215,7 @@ class GameBotService:
 
         if existing_leaderboard.height == 0:
             # First run or empty leaderboard: compute across all historical scores from effective_start
-            weekly_ranks = rank_weekly_scores(scores_df, wordle_start=effective_start)
+            weekly_ranks = self.game.rank_weekly_scores(scores_df, game_start=effective_start)
             full_leaderboard = calculate_running_leaderboard(
                 weekly_ranks, interest="overall_score"
             )
@@ -167,7 +224,7 @@ class GameBotService:
             return full_leaderboard[-1] if full_leaderboard else pl.DataFrame()
 
         # Incremental update based on latest week ranges
-        latest_wordle = scores_df["wordle_num"].max()
+        num_col = "wordle_num" if "wordle_num" in scores_df.columns else ("pips_num" if "pips_num" in scores_df.columns else "game_num")
         last_table_end = existing_leaderboard["week_end"].max()
 
         if last_table_end is not None:
@@ -177,10 +234,10 @@ class GameBotService:
         else:
             calc_limit = 0
 
-        scores_recent = scores_df.filter(pl.col("wordle_num") >= calc_limit)
+        scores_recent = scores_df.filter(pl.col(num_col) >= calc_limit)
 
         if scores_recent.height > 0:
-            recent_weeks = rank_weekly_scores(scores_recent, wordle_start=calc_limit)
+            recent_weeks = self.game.rank_weekly_scores(scores_recent, game_start=calc_limit)
             updated_leaderboard = calculate_running_leaderboard(
                 recent_weeks, interest="overall_score", leaderboard=existing_leaderboard
             )
@@ -193,31 +250,44 @@ class GameBotService:
         self,
         last_only: bool = False,
         wordle_start: Optional[int] = None,
+        game_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
     ) -> pl.DataFrame:
         """Fetch current leaderboard records from repository."""
-        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
+        effective_start = self._get_effective_start(
+            game_start=game_start, wordle_start=wordle_start, pips_start=pips_start
+        )
         return self.repository.load_leaderboard(last_leaderboard=last_only, wordle_start=effective_start)
 
     def generate_announcement_message(
         self,
         leaderboard_df: Optional[pl.DataFrame] = None,
         wordle_start: Optional[int] = None,
+        game_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
     ) -> str:
         """Construct the WhatsApp announcement message string."""
+        effective_start = self._get_effective_start(
+            game_start=game_start, wordle_start=wordle_start, pips_start=pips_start
+        )
         if leaderboard_df is None or leaderboard_df.height == 0:
-            leaderboard_df = self.get_leaderboard(last_only=True, wordle_start=wordle_start)
-        return format_leaderboard_announcement(leaderboard_df)
+            leaderboard_df = self.get_leaderboard(last_only=True, game_start=effective_start)
+        return self.game.format_leaderboard_announcement(leaderboard_df)
 
     def run(
         self,
         client: Optional[WhatsAppClient] = None,
         send_announcement: bool = True,
         wordle_start: Optional[int] = None,
+        game_start: Optional[int] = None,
+        pips_start: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Execute the end-to-end Wordle Bot synchronization workflow.
+        Execute the end-to-end Bot synchronization workflow.
         """
-        effective_start = wordle_start if wordle_start is not None else self.config.wordle_start
+        effective_start = self._get_effective_start(
+            game_start=game_start, wordle_start=wordle_start, pips_start=pips_start
+        )
         should_close_client = False
         if client is None:
             client = WhatsAppClient(self.config.group_name)
@@ -225,13 +295,13 @@ class GameBotService:
 
         try:
             # 1. Scrape & Sync
-            self.scrape_and_sync_scores(client, wordle_start=effective_start)
+            self.scrape_and_sync_scores(client, game_start=effective_start)
 
             # 2. Process Rankings
-            latest_leaderboard = self.process_and_update_leaderboards(wordle_start=effective_start)
+            latest_leaderboard = self.process_and_update_leaderboards(game_start=effective_start)
 
             # 3. Format Announcement
-            message = self.generate_announcement_message(latest_leaderboard, wordle_start=effective_start)
+            message = self.generate_announcement_message(latest_leaderboard, game_start=effective_start)
 
             # 4. Send Message if configured
             sent = False

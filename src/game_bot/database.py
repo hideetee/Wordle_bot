@@ -12,9 +12,12 @@ from game_bot.models import ScoreRecord
 class GameRepository:
     """Repository interface for persisting player scores and leaderboard records to SQLite."""
 
-    def __init__(self, database_path: Optional[Union[str, Path]] = None) -> None:
+    def __init__(self, database_path: Optional[Union[str, Path]] = None, game: str = "wordle") -> None:
         if database_path is None:
-            self.database_path = str(get_database_path())
+            try:
+                self.database_path = str(get_database_path(game))
+            except TypeError:
+                self.database_path = str(get_database_path())
         else:
             self.database_path = str(database_path)
 

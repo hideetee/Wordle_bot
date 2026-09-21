@@ -28,7 +28,7 @@ def test_service_scrape_and_sync_scores(mock_repo):
     assert scores_df.height == 4  # Alice & Bob across 1870 and 1871
 
     # Alice 1871 converted to 7
-    alice_1871 = scores_df.filter((pl.col("player") == "Alice") & (pl.col("wordle_num") == 1871))
+    alice_1871 = scores_df.filter((pl.col("player") == "A") & (pl.col("wordle_num") == 1871))
     assert alice_1871["score"][0] == 7
 
 
