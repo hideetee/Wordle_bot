@@ -32,7 +32,7 @@ PIPS_DATABASE_PATH = BASE_DIR / "scores_pips.db"
 @dataclass
 class WordleConfig:
     group_name: str = "Wordle Golf"
-    group_name_send: str = "Haidee UK (You)"
+    group_name_send: str = "(You)"
     wordle_start: Optional[int] = None
     game: str = "wordle"
 
@@ -48,7 +48,7 @@ class WordleConfig:
 
         return cls(
             group_name=data.get("GROUP_NAME", "Wordle Golf"),
-            group_name_send=data.get("GROUP_NAME_SEND", "Haidee UK (You)"),
+            group_name_send=data.get("GROUP_NAME_SEND", "(You)"),
             wordle_start=wordle_start,
             game=data.get("game", "wordle")
         )
@@ -64,14 +64,14 @@ class WordleConfig:
 
 DEFAULT_CONFIG_WORDLE = {
     "GROUP_NAME": "Wordle Golf",
-    "GROUP_NAME_SEND": "Haidee UK (You)",
+    "GROUP_NAME_SEND": "(You)",
     "WORDLE_START": None,
     "game": "wordle"
 }
 
 DEFAULT_CONFIG_PIPS = {
     "GROUP_NAME": "Pips",
-    "GROUP_NAME_SEND": "Haidee UK (You)",
+    "GROUP_NAME_SEND": "(You)",
     "PIPS_START": 391,
     "game": "pips"
 }
@@ -79,7 +79,7 @@ DEFAULT_CONFIG_PIPS = {
 @dataclass
 class PipsConfig:
     group_name: str = "Pips"
-    group_name_send: str = "Haidee UK (You)"
+    group_name_send: str = "(You)"
     pips_start: Optional[int] = None
     game: str = "pips"
 
@@ -95,7 +95,7 @@ class PipsConfig:
 
         return cls(
             group_name=data.get("GROUP_NAME", "Pips"),
-            group_name_send=data.get("GROUP_NAME_SEND", "Haidee UK (You)"),
+            group_name_send=data.get("GROUP_NAME_SEND", "(You)"),
             pips_start=pips_start,
             game=data.get("game", "pips")
         )
