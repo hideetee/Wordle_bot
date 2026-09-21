@@ -120,6 +120,20 @@ class WhatsAppClient:
             )
             time.sleep(1)
 
+        senders = [s for s, _, _ in parsed_wordles]
+        unique_senders = list(set(senders))
+
+        prefix_map = {}
+        for s in unique_senders:
+            others = [o for o in unique_senders if o != s]
+            prefix_map[s] = WordleParser.shortest_unique_prefix(s, others)
+
+        parsed_wordles = [
+            (prefix_map[s], num, score)
+            for (s, num, score) in parsed_wordles
+        ]
+
+
         return parsed_wordles
 
     def message_sent(self, message: str) -> bool:
