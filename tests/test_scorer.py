@@ -49,7 +49,7 @@ def test_calculate_running_leaderboard_two_weeks():
         "rank": [2.0, 1.0],
     })
 
-    running = calculate_running_leaderboard([week1, week2])
+    running = calculate_running_leaderboard([week1, week2], game = "wordle")
     assert len(running) == 2
 
     # Week 1 overall
@@ -70,15 +70,15 @@ def test_calculate_running_leaderboard_two_weeks():
 def test_compute_weekly_scores_wordle():
     # Arrange: 14 days → 2 full weeks
     df = pl.DataFrame({
-        "player": ["A","B"] * 14,
-        "wordle_num": list(range(1, 15)) * 1,   # 1..14
-        "score": [3,4] * 14
+        "player": ["A","B"] * 7,
+        "wordle_num": list(range(1, 15)),   # 1..14
+        "score": [3,4] * 7
     })
 
     weekly = compute_weekly_scores_wordle(
         df,
         game="wordle",
-        game_start=1
+        wordle_start=1
     )
 
     # Assert: two full weeks only
@@ -88,23 +88,23 @@ def test_compute_weekly_scores_wordle():
     w1 = weekly[0]
     assert w1["week_start"][0] == 1
     assert w1["week_end"][0] == 7
-    assert w1.filter(pl.col("player") == "A")["score"][0] == 3 * 7
-    assert w1.filter(pl.col("player") == "B")["score"][0] == 4 * 7
+    assert w1.filter(pl.col("player") == "A")["score"][0] == 3 * 4
+    assert w1.filter(pl.col("player") == "B")["score"][0] == 4 * 3
 
     # Week 2: 8–14
     w2 = weekly[1]
     assert w2["week_start"][0] == 8
     assert w2["week_end"][0] == 14
-    assert w2.filter(pl.col("player") == "A")["score"][0] == 3 * 7
-    assert w2.filter(pl.col("player") == "B")["score"][0] == 4 * 7
+    assert w2.filter(pl.col("player") == "A")["score"][0] == 3 * 3
+    assert w2.filter(pl.col("player") == "B")["score"][0] == 4 * 4
 
 
 def test_compute_weekly_scores_pips():
     # Arrange: 14 days → 2 full weeks
     df = pl.DataFrame({
-        "player": ["A","B"] * 14,
-        "pips_num": list(range(1, 15)),
-        "time_seconds": [60, 120] * 14   # A=60s, B=120s
+        "player": ["A","B"] * 7,
+        "pips_num": list(range(391, 405)),
+        "time_seconds": [60, 120] * 7   # A=60s, B=120s
     })
 
     weekly = compute_weekly_scores_pips(
@@ -118,45 +118,45 @@ def test_compute_weekly_scores_pips():
 
     # Week 1: 1–7
     w1 = weekly[0]
-    assert w1["week_start"][0] == 1
-    assert w1["week_end"][0] == 7
-    assert w1.filter(pl.col("player") == "A")["time_seconds"][0] == 60 * 7
-    assert w1.filter(pl.col("player") == "B")["time_seconds"][0] == 120 * 7
+    assert w1["week_start"][0] == 391
+    assert w1["week_end"][0] == 397
+    assert w1.filter(pl.col("player") == "A")["time_seconds"][0] == 60 * 4
+    assert w1.filter(pl.col("player") == "B")["time_seconds"][0] == 120 * 3
 
     # Week 2: 8–14
     w2 = weekly[1]
-    assert w2["week_start"][0] == 8
-    assert w2["week_end"][0] == 14
-    assert w2.filter(pl.col("player") == "A")["time_seconds"][0] == 60 * 7
-    assert w2.filter(pl.col("player") == "B")["time_seconds"][0] == 120 * 7
+    assert w2["week_start"][0] == 398
+    assert w2["week_end"][0] == 404
+    assert w2.filter(pl.col("player") == "A")["time_seconds"][0] == 60 * 3
+    assert w2.filter(pl.col("player") == "B")["time_seconds"][0] == 120 * 4
 
 
 def test_incomplete_week_is_dropped_pips():
     # 10 days → week 1 (1–7) complete, week 2 (8–14) incomplete
     df = pl.DataFrame({
-        "player": ["A","B"] * 10,
-        "pips_num": list(range(1, 11)),
-        "time_seconds": [10, 20] * 10
+        "player": ["A","B"] * 5,
+        "pips_num": list(range(391, 401)),
+        "time_seconds": [10, 20] * 5
     })
 
     weekly = compute_weekly_scores_pips(df)
 
     # Only week 1 should be returned
     assert len(weekly) == 1
-    assert weekly[0]["week_start"][0] == 1
-    assert weekly[0]["week_end"][0] == 7
+    assert weekly[0]["week_start"][0] == 391
+    assert weekly[0]["week_end"][0] == 397
 
 def test_weekly_scores_respect_start_filter_wordle():
     df = pl.DataFrame({
-        "player": ["A","B"] * 14,
+        "player": ["A","B"] * 7,
         "wordle_num": list(range(1, 15)),
-        "score": [3,4] * 14
+        "score": [3,4] * 7
     })
 
     weekly = compute_weekly_scores_wordle(
         df,
         game="wordle",
-        game_start=8
+        wordle_start=8
     )
 
     # Only week 2 (8–14) should remain
