@@ -50,9 +50,19 @@ def clean_and_fill_scores_wordle(
     else:
         rows = []
         for item in data:
-            item = as_tuple(item)
-            if isinstance(item, (list, tuple)) and len(item) >= 3:
+            # ScoreRecord dataclass
+            if isinstance(item, ScoreRecord):
+                rows.append((item.player, int(item.wordle_num), item.score))
+
+            # ScoreCalculator with as_tuple()
+            elif hasattr(item, "as_tuple"):
+                p, num, score = item.as_tuple()[:3]
+                rows.append((str(p), int(num), score))
+
+            # Raw tuple/list: (player, num, score)
+            elif isinstance(item, (list, tuple)) and len(item) >= 3:
                 rows.append((str(item[0]), int(item[1]), item[2]))
+
             else:
                 raise ValueError(f"Unsupported score item format: {item}")
 
@@ -522,9 +532,9 @@ class ScoreCalculator:
 
     def __repr__(self) -> str:
         if self.game == "wordle":
-            return f"(player={self.player}, wordle_num={self.wordle_num}, score={self.score}), game={self.game}\n"
+            return as_tuple(f"(player={self.player}, wordle_num={self.wordle_num}, score={self.score}), game={self.game}\n")
         elif self.game == "pips":
-            return f"(player={self.player}, pips_num={self.pips_num}, score={self.score}), game={self.game}\n"
+            return as_tuple(f"(player={self.player}, pips_num={self.pips_num}, score={self.score}), game={self.game}\n")
 
     # def numeric_score(self) -> int:
     #     if self.game == "wordle" and self.score == "X":
