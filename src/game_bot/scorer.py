@@ -19,11 +19,7 @@ def _get_game_col(df: pl.DataFrame, game: str = "wordle") -> str:
             return col
     return f"{game}_num"
 
-def as_tuple(self):
-    if self.game == "wordle":
-        return (self.player, self.wordle_num, self.score, self.game)
-    else:
-        return (self.player, self.pips_num, self.score, self.game)
+
 
 
 def clean_and_fill_scores_wordle(
@@ -53,16 +49,16 @@ def clean_and_fill_scores_wordle(
             # ScoreRecord dataclass
             if isinstance(item, ScoreRecord):
                 rows.append((item.player, int(item.wordle_num), item.score))
-
+    
             # ScoreCalculator with as_tuple()
             elif hasattr(item, "as_tuple"):
                 p, num, score = item.as_tuple()[:3]
                 rows.append((str(p), int(num), score))
-
+    
             # Raw tuple/list: (player, num, score)
             elif isinstance(item, (list, tuple)) and len(item) >= 3:
                 rows.append((str(item[0]), int(item[1]), item[2]))
-
+    
             else:
                 raise ValueError(f"Unsupported score item format: {item}")
 
@@ -156,11 +152,22 @@ def clean_and_fill_scores_pips(
     else:
         rows = []
         for item in data:
-            item = as_tuple(item)
-            if isinstance(item, (list, tuple)) and len(item) >= 3:
-                rows.append((str(item[0]), int(item[1]), item[2]))
-            else:
-                raise ValueError(f"Unsupported score item format: {item}")
+                    # ScoreRecord dataclass
+                    if isinstance(item, ScoreRecord):
+                        rows.append((item.player, int(item.wordle_num), item.score))
+            
+                    # ScoreCalculator with as_tuple()
+                    elif hasattr(item, "as_tuple"):
+                        p, num, score = item.as_tuple()[:3]
+                        rows.append((str(p), int(num), score))
+            
+                    # Raw tuple/list: (player, num, score)
+                    elif isinstance(item, (list, tuple)) and len(item) >= 3:
+                        rows.append((str(item[0]), int(item[1]), item[2]))
+            
+                    else:
+                        raise ValueError(f"Unsupported score item format: {item}")
+        
 
         df = pl.DataFrame(rows, schema=["player", "pips_num", "time_str"], orient="row")
 
@@ -222,7 +229,55 @@ def clean_and_fill_scores_pips(
 
     return df_filled.select(["player", "pips_num", "time_str", "time_seconds"]).sort(["pips_num", "player"])
 
-      
+# helper for compute_weekly_scores
+def _split_into_complete_weeks(
+    df: pl.DataFrame,
+    game: str,
+    start_num: Optional[int] = None,
+) -> List[tuple[pl.DataFrame, int, int]]:
+
+    if df is None or df.height == 0:
+        return []
+
+    col_name = _get_game_col(df, game)
+
+    if start_num is not None:
+        df = df.filter(pl.col(col_name) >= start_num)
+
+    if df.height == 0:
+        return []
+
+    calendar = CalendarUtils(game)
+
+    week_ranges = calendar.get_unique_week_ranges(
+        df[col_name].unique().to_list()
+    )
+
+    weekly_dfs = []
+
+    for week_start, week_end in week_ranges:
+
+        if start_num is not None and week_start < start_num:
+            continue
+
+        df_week = df.filter(
+            (pl.col(col_name) >= week_start)
+            & (pl.col(col_name) <= week_end)
+        )
+
+        if df_week.height > 0:
+            weekly_dfs.append(
+                (df_week, week_start, week_end)
+            )
+
+    # Remove incomplete trailing week
+    if weekly_dfs:
+        last_df, _, last_week_end = weekly_dfs[-1]
+
+        if last_df[col_name].max() < last_week_end:
+            weekly_dfs.pop()
+
+    return weekly_dfs      
 
 def compute_weekly_scores_wordle(
     df: pl.DataFrame,
@@ -247,24 +302,7 @@ def compute_weekly_scores_wordle(
 
     get_unique_week_ranges = CalendarUtils(game).get_unique_week_ranges
     week_ranges = get_unique_week_ranges(df[col_name].unique().to_list())
-    weekly_dfs = []
-
-    for week_start, week_end in week_ranges:
-        if effective_start is not None and week_start < effective_start:
-            continue
-        df_week = df.filter(
-            (pl.col(col_name) >= week_start) & (pl.col(col_name) <= week_end)
-        )
-        if df_week.height > 0:
-            weekly_dfs.append((df_week, week_start, week_end))
-
-    if not weekly_dfs:
-        return []
-
-    # Check if last week is complete (has game_num equal to week_end)
-    last_df, _, last_week_end = weekly_dfs[-1]
-    if last_df[col_name].max() < last_week_end:
-        weekly_dfs = weekly_dfs[:-1]
+    weekly_dfs = _split_into_complete_weeks(df, game=game, start_num=effective_start)
 
     weekly_scores = []
     for df_week, week_start, week_end in weekly_dfs:
@@ -280,6 +318,8 @@ def compute_weekly_scores_wordle(
         weekly_scores.append(weekly_score)
 
     return weekly_scores
+
+
 
 def compute_weekly_scores_pips(
     df: pl.DataFrame,
@@ -323,24 +363,7 @@ def compute_weekly_scores_pips(
 
     get_unique_week_ranges = CalendarUtils(game).get_unique_week_ranges
     week_ranges = get_unique_week_ranges(df[col_name].unique().to_list())
-    weekly_dfs = []
-
-    for week_start, week_end in week_ranges:
-        if effective_start is not None and week_start < effective_start:
-            continue
-        df_week = df.filter(
-            (pl.col(col_name) >= week_start) & (pl.col(col_name) <= week_end)
-        )
-        if df_week.height > 0:
-            weekly_dfs.append((df_week, week_start, week_end))
-
-    if not weekly_dfs:
-        return []
-
-    # Check if last week is complete (has game_num equal to week_end)
-    last_df, _, last_week_end = weekly_dfs[-1]
-    if last_df[col_name].max() < last_week_end:
-        weekly_dfs = weekly_dfs[:-1]
+    weekly_dfs = _split_into_complete_weeks(df, game=game, start_num=effective_start)
 
     weekly_scores = []
     for df_week, week_start, week_end in weekly_dfs:
@@ -532,9 +555,9 @@ class ScoreCalculator:
 
     def __repr__(self) -> str:
         if self.game == "wordle":
-            return as_tuple(f"(player={self.player}, wordle_num={self.wordle_num}, score={self.score}), game={self.game}\n")
+            return f"(player={self.player}, wordle_num={self.wordle_num}, score={self.score}), game={self.game}\n"
         elif self.game == "pips":
-            return as_tuple(f"(player={self.player}, pips_num={self.pips_num}, score={self.score}), game={self.game}\n")
+            return f"(player={self.player}, pips_num={self.pips_num}, score={self.score}), game={self.game}\n"
 
     # def numeric_score(self) -> int:
     #     if self.game == "wordle" and self.score == "X":
@@ -542,6 +565,12 @@ class ScoreCalculator:
     #     elif self.game == "pips" and self.score == "X":
     #         return PIPS_FAIL_PENALTY_SCORE
     #     return int(self.score)
+
+    def as_tuple(self):
+        if self.game == "wordle":
+            return (self.player, self.wordle_num, self.score, self.game)
+        else:
+            return (self.player, self.pips_num, self.score, self.game)
 
     @staticmethod
     def score_cleaner(
