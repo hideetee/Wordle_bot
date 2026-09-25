@@ -163,3 +163,59 @@ def test_weekly_scores_respect_start_filter_wordle():
     assert len(weekly) == 1
     assert weekly[0]["week_start"][0] == 8
     assert weekly[0]["week_end"][0] == 14
+
+
+
+
+def test_rank_weekly_scores_pips():
+    # Synthetic Pips data covering exactly one week (391–397)
+    df = pl.DataFrame({
+        "player": ["Alice", "Bob"] * 7,
+        "pips_num": [391, 391, 392, 392, 393, 393, 394, 394, 395, 395, 396, 396, 397, 397],
+        "time_seconds": [180,240] * 7,   # Alice always faster
+    })
+
+    # Run weekly ranking
+    ranked = rank_weekly_scores_pips(df, game="pips")
+
+    # Should produce exactly one weekly DataFrame
+    assert len(ranked) == 1
+    week = ranked[0]
+
+    # Expected columns
+    expected_cols = {
+        "player",
+        "week_start",
+        "week_end",
+        "rank",
+        "total_seconds",
+        "time_str",
+        "avg_seconds"
+    }
+
+    assert set(week.columns) == expected_cols
+
+    # Week boundaries
+    assert week["week_start"].unique().item() == 391
+    assert week["week_end"].unique().item() == 397
+
+    # Alice: 7 × 180 = 1260
+    # Bob:   7 × 240 = 1680
+    totals = dict(zip(week["player"].to_list(), week["total_seconds"].to_list()))
+    assert totals["Alice"] == 1260
+    assert totals["Bob"] == 1680
+
+    # Average seconds
+    avgs = dict(zip(week["player"].to_list(), week["avg_seconds"].to_list()))
+    assert avgs["Alice"] == 180
+    assert avgs["Bob"] == 240
+
+    # Rank: Alice always wins → rank 1.0, Bob → rank 2.0
+    ranks = dict(zip(week["player"].to_list(), week["rank"].to_list()))
+    assert ranks["Alice"] == 1.0
+    assert ranks["Bob"] == 2.0
+
+    # overall_seconds should equal total_seconds for first week
+    time_str = dict(zip(week["player"].to_list(), week["time_str"].to_list()))
+    assert time_str["Alice"] == '21:00'  # 1260 seconds = 21 minutes
+    assert time_str["Bob"] == '28:00'  # 1680 seconds = 28 minutes

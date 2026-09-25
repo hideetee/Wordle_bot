@@ -152,23 +152,24 @@ def clean_and_fill_scores_pips(
     else:
         rows = []
         for item in data:
-                    # ScoreRecord dataclass
-                    if isinstance(item, ScoreRecord):
-                        rows.append((item.player, int(item.wordle_num), item.score))
-            
-                    # ScoreCalculator with as_tuple()
-                    elif hasattr(item, "as_tuple"):
-                        p, num, score = item.as_tuple()[:3]
-                        rows.append((str(p), int(num), score))
-            
-                    # Raw tuple/list: (player, num, score)
-                    elif isinstance(item, (list, tuple)) and len(item) >= 3:
-                        rows.append((str(item[0]), int(item[1]), item[2]))
-            
-                    else:
-                        raise ValueError(f"Unsupported score item format: {item}")
         
+            if isinstance(item, ScoreRecord):
+                if game == "wordle":
+                    rows.append((item.player, int(item.wordle_num), item.score))
+                else:  # pips
+                    rows.append((item.player, int(item.pips_num), item.time_str))
 
+            elif hasattr(item, "as_tuple"):
+                p, num, val = item.as_tuple()[:3]
+                rows.append((str(p), int(num), val))
+
+            elif isinstance(item, (list, tuple)) and len(item) >= 3:
+                rows.append((str(item[0]), int(item[1]), item[2]))
+
+            else:
+                raise ValueError(f"Unsupported score item format: {item}")
+
+        
         df = pl.DataFrame(rows, schema=["player", "pips_num", "time_str"], orient="row")
 
     if df.height == 0:
@@ -208,6 +209,9 @@ def clean_and_fill_scores_pips(
     df = df.with_columns(
         pl.col("prefix").alias("player")
     ).drop("prefix")
+
+    # if "time_str" in df.columns:
+    #     df = df.drop("time_str")
     
      # Filter start
     if pips_start is not None:
@@ -226,6 +230,9 @@ def clean_and_fill_scores_pips(
     full_grid = players_df.join(days, how="cross")
 
     df_filled = full_grid.join(df, on=["player", "pips_num"], how="left")
+    # if "time_str" in df_filled.columns:
+    #     df_filled = df_filled.drop("time_str")
+
 
     return df_filled.select(["player", "pips_num", "time_str", "time_seconds"]).sort(["pips_num", "player"])
 
@@ -419,10 +426,14 @@ def rank_weekly_scores_pips(
     pips_start: Optional[int] = None,
 ) -> List[pl.DataFrame]:
     """
-    Compute competition ranking for each complete week with mean ranks assigned to ties.
+    Compute weekly Pips rankings with:
+       - mean competition rank
+       - total_seconds
+       - avg_seconds
+       - week_start / week_end
     """
     effective_start = pips_start if pips_start is not None else None
-    weekly_scores = compute_weekly_scores_pips(df, game=game, pips_start=effective_start)
+    weekly_scores = compute_weekly_scores_pips(df, game=game, pips_start=effective_start) #player, pips_num, time_seconds, week_start, week_end
     ranked_weeks = []
 
     for weekly_score in weekly_scores:
@@ -445,15 +456,61 @@ def rank_weekly_scores_pips(
         # sum total sec and convert to 'mm:ss' format
         df_total_sec = (
             df_final.group_by("player")
-            .agg(pl.sum("time_seconds").alias("overall_seconds"))
+            .agg(
+                pl.sum("time_seconds").alias("total_seconds")
+        )
+        .with_columns(
+            (
+                (pl.col("total_seconds") // 60).cast(pl.String)
+                + ":"
+                + (pl.col("total_seconds") % 60).cast(pl.String).str.zfill(2)
+                ).alias("time_str")
+            )
         )
 
-        df_avg_sec = (
-            df_total_sec.group_by("player")
-            .agg(pl.mean("time_seconds").alias("avg_seconds"))
+        if "time_str" in df.columns and "time_seconds" not in df.columns:
+               df = df.with_columns(
+                   pl.when(pl.col("time_str").cast(pl.String).str.contains(":"))
+                   .then(
+                       pl.col("time_str")
+                       .cast(pl.String)
+                       .str.split(":")
+                       .list.get(0)
+                       .cast(pl.Int64) * 60
+                       + pl.col("time_str")
+                       .cast(pl.String)
+                       .str.split(":")
+                       .list.get(1)
+                       .cast(pl.Int64)
+                   )
+                   .alias("time_seconds")
+               )
+               
+        df_avg_sec = df.group_by("player").agg(
+                   pl.mean("time_seconds").round(2).alias("avg_seconds"))
+
+
+
+        # week_start = int(df_final["week_start"].min())
+        # week_end = int(df_final["week_end"].max())
+
+        week_table = (
+            df_final
+            .join(df_total_sec, on="player")
+            .join(df_avg_sec, on="player")
+            .select([
+                "player",
+                "week_start",
+                "week_end",
+                "rank",
+                "total_seconds",
+                "time_str",
+                "avg_seconds",
+                ])
+            .sort("rank")
         )
 
-        ranked_weeks.append(df_avg_sec)
+        ranked_weeks.append(week_table)
 
     return ranked_weeks
 
@@ -642,7 +699,7 @@ class ScoreCalculator:
     @staticmethod
     def week_ranking(
         df: pl.DataFrame,
-        game: str = "wordle",
+        game: str = Optional[str],
         # game_start: Optional[int] = None,
         wordle_start: Optional[int] = None,
         pips_start: Optional[int] = None,
@@ -655,14 +712,24 @@ class ScoreCalculator:
 
         if game not in dispatch:
             raise ValueError(f"Unsupported game type: {game}. Must be 'wordle' or 'pips'.")
-        
-        return dispatch[game](
-            df,
-            game=game,
-            # game_start=game_start,
-            wordle_start=wordle_start,
-            pips_start=pips_start,
-        )
+
+        if game == 'wordle':
+            return dispatch[game](
+                df,
+                game=game,
+                # game_start=game_start,
+                wordle_start=wordle_start,
+            )
+        elif game == 'pips':
+            return dispatch[game](
+                df,
+                game=game,
+                # game_start=game_start,
+                pips_start=pips_start,
+            )
+        else:
+            raise ValueError(f"Unsupported game type: {game}. Must be 'wordle' or 'pips'. in week_ranking()")
+    
 
     @staticmethod
     def running_ranking(
